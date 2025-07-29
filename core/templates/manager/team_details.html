@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manager Portal – Teams</title>
+  {% load static%}
+  <link rel="stylesheet" href="{% static 'styles.css' %}">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f8f9fa;
+    }
+
+    header {
+      background: #007bff;
+      color: white;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    header h1 {
+        margin: 0;
+        flex-grow: 1;
+        text-align: center;
+    }
+
+    .logout-link {
+        color: white;
+        text-decoration: none;
+        font-weight: bold;
+        padding: 0.5rem 1rem;
+        border: 1px solid white;
+        border-radius: 5px;
+        transition: background-color 0.3s ease;
+    }
+
+    .logout-link:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    nav {
+      display: flex;
+      background: #eee;
+      border-bottom: 1px solid #ccc;
+    }
+
+    nav a {
+      flex: 1;
+      text-align: center;
+      padding: 1rem;
+      text-decoration: none;
+      font-weight: bold;
+      color: black;
+      border-bottom: 3px solid transparent;
+    }
+
+    nav a.active {
+      background: white;
+      border-bottom: 3px solid #007bff;
+      color: #007bff;
+    }
+    
+    nav a:hover {
+      background-color: #e1dfdf;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: white; 
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1rem;
+    }
+
+    .top-bar button {
+      background-color: #007bff;
+      color: white;
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    .top-bar button:hover {
+        background-color: #0056b3;
+    }
+
+    .team-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .team-box {
+      flex: 1 1 250px;
+      background: white;
+      padding: 2rem;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      text-align: center;
+      font-size: 1.5rem;
+      transition: transform 0.2s ease;
+      cursor: pointer;
+    }
+
+    .team-box:hover {
+      transform: scale(1.02);
+    }
+
+  
+    .popup-bg {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.4);
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .popup {
+      background: white;
+      padding: 2rem;
+      border-radius: 10px;
+      width: 400px;
+      max-width: 90%;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      max-height: 90vh; 
+      overflow-y: auto;
+    }
+
+    .popup h3 {
+      margin-top: 0;
+    }
+
+    .popup label {
+      display: block;
+      margin-top: 1rem;
+      font-weight: bold;
+    }
+
+    .popup input, .popup select {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.3rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box; 
+    }
+
+    .popup .actions {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 1.5rem;
+    }
+
+    .popup .actions button {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .popup .actions .save {
+      background-color: #007bff;
+      color: white;
+    }
+    .popup .actions .save:hover { background-color: #0056b3; }
+
+    .popup .actions .delete {
+      background-color: #dc3545;
+      color: white;
+    }
+    .popup .actions .delete:hover { background-color: #c82333; }
+
+    .popup .actions .cancel {
+      background-color: #6c757d;
+      color: white;
+    }
+    .popup .actions .cancel:hover { background-color: #5a6268; }
+
+    .member-list {
+        list-style: none;
+        padding: 0;
+        margin-top: 0.5rem;
+        max-height: 100px;
+        overflow-y: auto;
+        border: 1px solid #eee;
+        border-radius: 4px;
+    }
+
+    .member-list li {
+        padding: 0.3rem 0.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #f9f9f9;
+    }
+    .member-list li:last-child {
+        border-bottom: none;
+    }
+
+    .member-list .remove-btn {
+        background: none;
+        border: none;
+        color: #dc3545;
+        cursor: pointer;
+        font-size: 0.9rem;
+        padding: 0 5px;
+    }
+
+    .add-user-section {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+        align-items: flex-end;
+    }
+
+    .add-user-section select {
+        flex-grow: 1;
+        margin-top: 0;  
+    }
+
+    .add-user-section button {
+        padding: 0.5rem 1rem;
+        background-color: #28a745;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 1rem;
+    }
+    .add-user-section button:hover {
+        background-color: #218838;
+    }
+
+    .report-section {
+        margin-top: 2rem;
+        padding: 1.5rem;
+        background: #e9ecef;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        text-align: center;  
+    }
+
+    .report-section h3 {
+        margin-top: 0;
+        color: #343a40;
+    }
+
+    .report-button {
+        background-color: #007bff;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: background-color 0.3s ease;
+    }
+    .report-button:hover {
+        background-color: #2573c6;
+    }
+
+
+    #efficiencyReportPopup .popup {
+        width: 600px; 
+        max-width: 95%;
+    }
+
+    #efficiencyReportPopup h3 {
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+
+    #efficiencyReportContent {
+        margin-top: 1rem;
+    }
+
+    #efficiencyReportContent table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+    }
+
+    #efficiencyReportContent th,
+    #efficiencyReportContent td {
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        text-align: left;
+    }
+
+    #efficiencyReportContent th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+    }
+
+    .efficiency-rating-cell {
+        font-weight: bold;
+    }
+    .efficiency-rating-cell.high {
+        color: #28a745; 
+    }
+
+    .efficiency-rating-cell.medium {
+        color: #ffc100; 
+    }
+    .efficiency-rating-cell.low {
+        color: #dc3545; 
+    }
+
+    #reportPopupCloseBtn {
+        background-color: #6c757d;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-top: 1.5rem;
+        display: block; 
+        margin-left: auto;
+        margin-right: auto;
+        transition: background-color 0.3s ease;
+    }
+    #reportPopupCloseBtn:hover {
+        background-color: #5a6268;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1> Manager Portal</h1>
+    <a href="{% url 'logout' %}" class="logout-link">Logout</a>
+  </header>
+
+  <nav>
+    <a href="{% url 'manager_teams_page' %}" class="active">Teams</a>
+    <a href="{% url 'manager_demands_page' %}">Demands</a>
+    <a href="{% url 'manager_approvals_page' %}">Approvals Pending</a>
+  </nav>
+
+
+  <div class="container">
+    <div class="top-bar">
+      <button id="add_new_team_button">+ Add New Team</button>
+    </div>
+    <div class="team-grid" id="teamsContainer">
+      {# loading team data into the table #}
+      <p id="loadingMessage">Loading teams...</p>
+      <p id="noTeamsMessage" style="display:none;">No teams found. Click "Add New Team" to get started!</p>
+    </div>
+
+    <!-- Teams Efficiency Report Section  -->
+    <div class="report-section">
+        <h3>Teams Efficiency Report</h3>
+        <button id="generateReportBtn" class="report-button">Generate Report</button>
+    </div>
+  </div>
+
+
+  <!-- Popup for Add/Edit Team -->
+  <div class="popup-bg" id="team_popup">
+    <div class="popup">
+      <h3 id="popup_title"></h3> 
+      <input type="hidden" id="team_id_input" />
+
+      <label for="team_name_input">Team Name:</label>
+      <input type="text" id="team_name_input" />
+
+      <label>Current Team Members:</label>
+      <ul id="current_team_members_list" class="member-list">
+        <li>No members yet.</li> 
+      </ul>
+
+      <div class="add-user-section">
+        <select id="available_users_select">
+          <option value="NA">Select user to add</option>
+          {% for user in available_users %}
+            <option value = "{{ user.user_id }}"> {{ user.first_name }} {{ user.last_name }}</option>
+          {% endfor %}
+        </select>
+        <button id="add_user_to_team_button">Add User</button>
+      </div>
+
+      <div class="actions">
+        <button class="save" id="saveTeamBtn">Save</button>
+        <button class="delete" id="deleteTeamBtn">Delete</button>
+        <button class="cancel" id="cancelPopupBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+
+<script>
+
+// for the add new team button 
+    const add_new_team_button  = document.getElementById("add_new_team_button");
+    const team_popup = document.getElementById("team_popup");
+    const popup_title = document.getElementById("popup_title");
+    const team_id_input = document.getElementById("team_id_input");
+    const team_name_input = document.getElementById("team_name_input");
+    const current_team_members_list = document.getElementById("current_team_members_list");
+    const available_users_select = document.getElementById("available_users_select");
+
+    const cancelPopupBtn = document.getElementById("cancelPopupBtn");
+
+    add_new_team_button.addEventListener("click", () => {
+        // Reset popup fields for new team creation
+        popup_title.textContent = "Add New Team";
+        team_id_input.value = "";
+        team_name_input.value = "";
+        current_team_members_list.innerHTML = '<li>No members yet.</li>';
+        available_users_select.selectedIndex = 0;
+
+        // to show popup
+        team_popup.style.display = "flex";
+    });
+
+    // clicking cancel closes the popup 
+    cancelPopupBtn.addEventListener("click", () => {
+        team_popup.style.display = "none";
+    });
+
+    // so that closing anywhere outside the popup can close it
+    team_popup.addEventListener("click", (e) => {
+        if (e.target === team_popup) {
+        team_popup.style.display = "none";
+        }
+    });
+
+</script>

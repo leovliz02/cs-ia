@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Employee – Personal Details</title>
+  {% load static%}
+  <link rel="stylesheet" href="{% static 'styles.css' %}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <style>
+
+    .container {
+      max-width: 300px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 1rem 0;
+        font-size: 1rem;
+    }
+
+    .popup input[type="number"],
+    .popup input[type="date"],
+    .popup input[type="text"] {
+        width: 100%;
+        padding: 0.5rem;
+        margin-top: 0.3rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+    }
+
+
+    .notifications-section {
+        max-width: 600px;
+        margin: 2rem auto;
+        padding: 1rem;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        background-color: #fdfdfd;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .notification-item {
+        padding: 0.8rem 0;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .notification-item:last-child {
+        border-bottom: none;
+    }
+
+    .notification-item.unread {
+        font-weight: bold;
+        background-color: #e6f7ff; /* Light blue for unread */
+        padding-left: 0.5rem;
+        border-left: 5px solid #1890ff;
+    }
+
+    .notification-content {
+        flex-grow: 1;
+    }
+
+    .notification-actions button {
+        margin-left: 0.5rem;
+        padding: 0.3rem 0.6rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8em;
+    }
+
+    .notification-actions .mark-read-btn {
+        background-color: #52c41a; /* Green */
+        color: white;
+    }
+    .notification-actions .mark-read-btn:hover {
+        background-color: #73d13d;
+    }
+
+    .notification-actions .delete-btn {
+        background-color: #ff4d4f; /* Red */
+        color: white;
+    }
+    .notification-actions .delete-btn:hover {
+        background-color: #ff7875;
+    }
+  </style>
+
+</head>
+<body>
+  <header>
+    <center><h1>Team Member Portal</h1></center>
+    <a href="{% url 'logout' %}" class="logout-link">Logout</a> {# Changed to logout_view as per your views.py #}
+  </header>
+
+<nav>
+    <a class = "active" href="{% url 'employee_personal' %}">Personal</a>
+    <a href="{% url 'employee_demands' %}">Demands</a>
+    <a href="{% url 'employee_commitments' %}">Team Commitments</a>
+</nav>
+
+<div class="container">
+  <center><h2>Personal Details</h2></center>
+
+  {#displaying success of employee capacity change request #}
+  {% if employee_data.message %}
+      <div class="message">{{ employee_data.message }}</div>
+  {% endif %}
+
+  {#main table details#}
+  <div class="info-row">
+    <div class="label">Member ID:</div>
+    <div class="value" id="memberId">{{ request.user.pk }}</div>
+  </div>
+
+  <div class="info-row">
+    <div class="label">Name:</div>
+    <div class="value" id="memberName">{{ employee_data.first_name }} {{ employee_data.last_name }}</div>
+  </div>
+
+  <div class="info-row">
+    <div class="label">Team ID:</div>
+    <div class="value" id="teamId">{{ employee_data.team_id }}</div>
+  </div>
+
+  <div class="info-row">
+    <div class="label">Team Name:</div>
+    <div class="value" id="teamName">{{ employee_data.team_name }}</div>
+  </div>
+
+  <div class="info-row">
+    <div class="label">Capacity (Daily Default):</div>
+    <div class="value" id="capacity">{{ employee_data.employee_capacity }} hours</div>
+  </div>
+
+
+  {#displays a list of upcoming dates for which employee capacity is different from the default. #}
+  {% if employee_data.daily_overrides %}
+    <div class="info-row">
+        <div class="label">Upcoming Daily Overrides:</div>
+        <div class="value">
+            <ul>
+            {% for override in employee_data.daily_overrides %}
+                <li>{{ override.date|date:"M d, Y" }}: {{ override.capacity_hours }} hours</li>
+            {% endfor %}
+            </ul>
+        </div>
+    </div>
+  {% endif %}
+
+
+  {#capacity change popup format#}
+  <center><button class="btn" onclick="openPopup()">Request Capacity Change</button></center>
+</div>
+
+<div class="popup-bg" id="popupBg">
+  <div class="popup">
+    <h3>Request Capacity Change</h3>
+    <form id="capacityForm" data-employee-id="{{ employee.employee_ID }}">
+      <label for="newCapacity">New Daily Capacity (hours):</label>
+      <input type="number" id="newCapacity" name="newCapacity" min="0" max="24" required />
+
+      <label for="dateRange">Select Date Range:</label>
+      <input type="text" id="dateRange" name="dateRange" placeholder="Select a range" required />
+      <small>Pick a start and end date for the capacity change.</small>
+
+
+      <div class="popup-buttons">
+        <button type="button" class="cancel" onclick="closePopup()">Cancel</button>
+        <button type="submit" class="submit">Submit Request</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# NEW NOTIFICATIONS SECTION #}
+<div class="notifications-section">
+    <center><h2>Your Notifications</h2></center>
+    {% if employee_data.notifications %}
+        <div id="notificationList">
+            {# Unread notifications first, then read notifications #}
+            {% for notification in employee_data.notifications %}
+                <div class="notification-item {% if not notification.is_read %}unread{% endif %}" data-notification-id="{{ notification.notification_ID }}">
+                    <div class="notification-content">
+                        <p>{{ notification.notification_message }}</p>
+                        <small>Received: {{ notification.created_at|date:"M d, Y H:i" }}</small>
+                    </div>
+                    <div class="notification-actions">
+                        {% if not notification.is_read %}
+                            <button class="mark-read-btn" onclick="markNotificationAsRead('{{ notification.notification_ID }}')">Mark as Read</button>
+                        {% endif %}
+                        <button class="delete-btn" onclick="deleteNotification('{{ notification.notification_ID }}')">Delete</button>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p><center>No notifications to display.</center></p>
+    {% endif %}
+</div>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+
+  //capacity change popup
+    function openPopup() {
+        document.getElementById("popupBg").style.display = "flex";
+    }
+
+  function closePopup() {
+    document.getElementById('popupBg').style.display = 'none';
+    document.getElementById('capacityForm').reset();
+  }
+
+  // event listener to call API when the button is clicked
+    document.addEventListener("DOMContentLoaded", function() {
+    const today = new Date();
+    const minDate = new Date(today);
+    minDate.setDate(minDate.getDate() + 7);
+
+    flatpickr("#dateRange", {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        minDate: minDate,
+        onClose: function(selectedDates, dateStr, instance) {
+        if (selectedDates.length === 1) {
+            const singleDate = instance.formatDate(selectedDates[0], "Y-m-d");
+            instance.setDate([selectedDates[0], selectedDates[0]], false);
+            instance.input.value = `${singleDate} to ${singleDate}`;
+        }
+        } 
+    });
+    });
+
+    const form = document.getElementById("capacityForm");
+    const employee_ID = "{{ employee_ID }}";
+
+    // event listener to validate the entries before submit is clicked
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      const newCapacity = document.getElementById("newCapacity").value;
+      const dateRange = document.getElementById("dateRange").value;
+
+      const dates = dateRange.split(" to ");
+      if (dates.length < 1 || dates.length > 2) {
+        alert("Please select a valid date range.");
+        return;
+      }
+
+      const startDate = dates[0];
+      const endDate = dates.length === 2 ? dates[1] : dates[0];
+
+      fetch(`/api/capacity/check_overlap/?employee_id=${employee_ID}&start_date=${startDate}&end_date=${endDate}`).then(response => response.json())
+    .then(data => {
+      if (data.overlap) {
+        alert("A capacity change request already exists for this employee in the selected date range.");
+        return;
+      }
+
+      fetch('/api/capacity/change_request/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken'),
+        },
+
+        //passing the values to JSON to render into the capacity_change_request function
+        body: JSON.stringify({
+          new_capacity: newCapacity,
+          start_date: startDate,
+          end_date: endDate,
+        })
+      })
+        .then(response => {
+
+          if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`${text}`);
+                console.log(text)
+            });
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (data.success) {
+            alert(`Your request to change capacity to ${newCapacity} hours from ${startDate} to ${endDate} has been submitted.`);
+            closePopup();
+            location.reload();
+          } else {
+            alert((data.message || 'Unknown error'));
+          }
+        })
+
+        // error message for if some reason the server has not been able to return a message to the HTML or the error message returned has not been parsed properly 
+        .catch(error => {
+          console.error('Error submitting capacity change request:', error);
+          alert(error.message);
+        });
+    });
+
+    
+
+
+  
+
+    document.addEventListener("DOMContentLoaded", function() {
+    const today = new Date();
+
+    const minDate = new Date(today);
+    minDate.setDate(minDate.getDate() + 7);
+
+    const maxDate = new Date(minDate);
+    maxDate.setDate(maxDate.getDate() + 28);
+    })
+
+    })
+
+    // js for new notification
+
+  function markNotificationAsRead(notification_ID) {
+      fetch(`/api/notifications/${notification_ID}/mark_read/`, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCookie('csrftoken'),
+          },
+          body: JSON.stringify({}) 
+      })
+      .then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              console.log('Parsed response:', data);
+              const notificationItem = document.querySelector(`.notification-item[data-notification-id="${notification_ID}"]`);
+              if (notificationItem) {
+                  notificationItem.classList.remove('unread');
+                  const markReadBtn = notificationItem.querySelector('.mark-read-btn');
+                  if (markReadBtn) {
+                      markReadBtn.remove();
+                  }
+          } 
+  }
+        else {
+              alert('Failed to mark notification as read: ' + (data.message || 'Unknown error'));
+          }})
+
+        // error message for if some reason the server has not been able to return a message to the HTML or the error message returned has not been parsed properly 
+      .catch(error => {
+          console.error('Error marking notification as read:', error);
+          alert('An error occurred while marking the notification as read.');
+      });
+  }
+
+  function deleteNotification(notification_ID) {
+      if (!confirm('Are you sure you want to delete this notification?')) {
+          return;
+      }
+      fetch(`/api/notifications/${notification_ID}/delete/`, {
+          method: 'POST', 
+          headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCookie('csrftoken'),
+          },
+          body: JSON.stringify({}) 
+      })
+      .then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              const notificationItem = document.querySelector(`.notification-item[data-notification-id="${notification_ID}"]`);
+              if (notificationItem) {
+                  notificationItem.remove(); 
+              }
+          } else {
+              alert('Failed to delete notification: ' + (data.message || 'Unknown error'));
+          }
+      })
+
+        // error message for if some reason the server has not been able to return a message to the HTML or the error message returned has not been parsed properly 
+      .catch(error => {
+          console.error('Error deleting notification:', error);
+          alert('An error occurred while deleting the notification.');
+      });
+  }
+
+  function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+</script>
+  
+
+</body>
+</html>

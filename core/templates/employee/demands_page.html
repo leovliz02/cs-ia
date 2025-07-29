@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Team Member – Demands</title>
+
+  {% load static%}
+  <link rel="stylesheet" href="{% static 'styles.css' %}">
+
+</head>
+
+<body>
+  <header>
+      <center><h1>Team Member Portal</h1></center>
+      <a href="{% url 'logout' %}" class="logout-link">Logout</a>
+  </header>
+
+  <nav>
+      <a href="{% url 'employee_personal' %}">Personal</a>
+      <a class = "active" href="{% url 'employee_demands' %}">Demands</a>
+      <a href="{% url 'employee_commitments' %}">Team Commitments</a>
+  </nav>
+
+  <div class="container">
+    <div class="top-bar">
+      <div class="search-filter">
+        <input type="text" id="mainSearchInput" placeholder="Search demands by name or ID" />
+        <button id="mainFilterBtn" title="Filter demands">&#x1F50D;</button>
+      </div>
+      <button class="edit-btn" id="editDemandBtn"> Edit Demand</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Start Date</th>
+          <th>Predicted End Date</th>
+          <th>Actual End Date</th>
+          <th>Time Required</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="demandsTableBody">
+        {% for demand in demands_data_parsed %}
+        <tr>
+          <td>{{ demand.demand_name }}</td>
+          <td>{{ demand.start_date}}</td>
+          <td>{{ demand.estimated_end_date}}</td>
+          <td>{{ demand.actual_end_date }}</td>
+          <td>{{ demand.time_needed }}</td>
+          <td>{{ demand.demand_completion_status }}</td>
+        </tr>
+        {% empty %}
+        <tr id="noDemandsRow">
+          <td colspan="6">
+              {% if message %}
+                  {{ message }}
+              {% else %}
+                  No demands found for your team.
+              {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="popup-bg" id="editPopup">
+    <div class="popup">
+      <h2>Edit Demand</h2>
+
+      <div class="relative">
+        <label for="searchDemandInput">Search Demand (name or ID):</label>
+        <input type="text" id="searchDemandInput" placeholder="Start typing..." autocomplete="off" />
+        <ul id="demandSuggestions"></ul>
+      </div>
+
+      <form id="editDemandForm" style="display:none;">
+        <label>Demand Name:</label>
+        <input type="text" id="demandName" />
+
+        <label>Status:</label>
+        <select id="demandStatus">
+          <option value="Pending">Pending</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Finished">Finished</option>
+        </select>
+
+        <label>Start Date:</label>
+        <input type="text" id="startDate" readonly />
+
+        <label>Predicted End Date:</label>
+        <input type="text" id="predEndDate" readonly />
+
+        <label>Actual End Date:</label>
+        <input type="text" id="actualEndDate" readonly />
+
+        <label>Time Required:</label>
+        <input type="text" id="timeRequired" readonly />
+
+        <div class="buttons">
+          <button type="button" class="cancel" id="cancelBtn">Cancel</button>
+          <button type="submit" class="save">Save</button>
+          <button type="button" class="search-another" id="searchAnotherBtn">Search Another</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // format dates to dd/mm/yy
+    function formatDate(dateString) {
+      console.log("Input dateString:", dateString); 
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) { 
+          return ' - ';
+      }
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = String(date.getFullYear()).slice(-2);
+      return `${day}/${month}/${year}`;
+    }
+    // loads all initial demand details into allDemands
+    // Assumes demands_json is provided by the Django view with model field names
+    const allDemands = JSON.parse('{{ demands_json|escapejs }}');
+    let displayedDemands = [...allDemands];
+
+    let selectedDemand = null;
+
+    //the elements of the table into which the received data has to be inputted.
+    const mainSearchInput = document.getElementById('mainSearchInput');
+    const mainFilterBtn = document.getElementById('mainFilterBtn');
+    const demandsTableBody = document.getElementById('demandsTableBody');
+    const noDemandsRow = document.getElementById('noDemandsRow');
+
+    //the elements of the popup into which the data will be loaded.
+    const popupBg = document.getElementById('editPopup');
+    const editBtn = document.getElementById('editDemandBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const form = document.getElementById('editDemandForm');
+    const searchInput = document.getElementById('searchDemandInput');
+    const suggestionsList = document.getElementById('demandSuggestions');
+    const searchAnotherBtn = document.getElementById('searchAnotherBtn');
+
+    // function to render the table with current displayed demands
+    function renderTable() {
+      demandsTableBody.innerHTML = '';
+
+      if (displayedDemands.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td colspan="6">No demands found matching your search.</td>`;
+        demandsTableBody.appendChild(row);
+        return;
+      }
+
+      displayedDemands.forEach(demand => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${demand.demand_name}</td>
+          <td>${formatDate(demand.start_date)}</td>
+          <td>${formatDate(demand.estimated_end_date)}</td>
+          <td>${formatDate(demand.actual_end_date)}</td>
+          <td>${demand.time_needed}</td>
+          <td>${demand.demand_completion_status}</td>
+        `;
+        demandsTableBody.appendChild(row);
+      });
+    }
+
+    //populates the table with all demands assigned to the team
+    renderTable();
+
+    // search bar logic
+    function filterDemands() {
+      const query = mainSearchInput.value.toLowerCase();
+      if (!query) {
+        displayedDemands = [...allDemands]; // If query is empty, show all demands
+      } else {
+        displayedDemands = allDemands.filter(d =>
+          String(d.demand_name).toLowerCase().includes(query) || String(d.demandID).toLowerCase().includes(query)
+        );
+      }
+      renderTable(); //populates the table based on demand name searched for
+    }
+
+    mainSearchInput.addEventListener('input', filterDemands);
+    mainFilterBtn.addEventListener('click', filterDemands); // Filter on button click
+
+    // edit demand popup outputs
+    editBtn.onclick = () => {
+      popupBg.style.display = 'flex';
+      form.style.display = 'none';
+      searchInput.value = '';
+      suggestionsList.innerHTML = '';
+      suggestionsList.style.display = 'none';
+    };
+
+    cancelBtn.onclick = () => {
+      popupBg.style.display = 'none';
+      selectedDemand = null;
+    };
+
+    searchAnotherBtn.onclick = () => {
+      form.style.display = 'none';
+      selectedDemand = null;
+      searchInput.value = '';
+      suggestionsList.innerHTML = '';
+      suggestionsList.style.display = 'none';
+    };
+
+    searchInput.addEventListener('input', () => {
+      const query = searchInput.value.toLowerCase();
+      suggestionsList.innerHTML = '';
+      if (!query) {
+        suggestionsList.style.display = 'none';
+        return;
+      }
+
+      // filter from all demands to find the demand to edit
+      const matches = allDemands.filter(d =>
+        String(d.demand_name).toLowerCase().includes(query) || String(d.demandID).toLowerCase().includes(query) 
+      );
+
+      if (matches.length === 0) {
+        suggestionsList.style.display = 'none';
+        return;
+      }
+
+      matches.forEach(d => {
+        const li = document.createElement('li');
+        li.textContent = `${d.demandID} – ${d.demand_name}`;
+        li.onclick = () => {
+          selectedDemand = d;
+          fillForm(d);
+          suggestionsList.style.display = 'none';
+          searchInput.value = `${d.demandID} – ${d.demand_name}`; 
+        };
+        suggestionsList.appendChild(li);
+      });
+
+      suggestionsList.style.display = 'block';
+    });
+
+    function fillForm(d) {
+      document.getElementById('demandName').value = d.demand_name;
+      document.getElementById('demandStatus').value = d.demand_completion_status;
+      document.getElementById('startDate').value = formatDate(d.start_date);
+      document.getElementById('predEndDate').value = formatDate(d.estimated_end_date);
+      document.getElementById('actualEndDate').value = formatDate(d.actual_end_date);
+      document.getElementById('timeRequired').value = d.time_needed;
+      form.style.display = 'block';
+    }
+
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      if (!selectedDemand) return;
+
+      const demandIdToRequest = selectedDemand.demandID;
+      const newDemandName = document.getElementById('demandName').value;
+      const newDemandStatus = document.getElementById('demandStatus').value;
+
+      //posting the demand edit request in the DemandEditRequest database
+      fetch('/api/demands/create_edit_request/', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCookie('csrftoken'),
+          },
+          body: JSON.stringify({
+              demandID: demandIdToRequest,
+              new_name: newDemandName,
+              new_status: newDemandStatus
+          })
+      })
+      .then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              alert('Demand edit request submitted successfully!');
+              popupBg.style.display = 'none';
+              selectedDemand = null;
+              location.reload();
+          } else {
+              alert('Failed to submit demand edit request: ' + (data.message || 'Unknown error'));
+          }
+      })
+      //in case the api hasnt returned a value
+      .catch(error => {
+          console.error('Error:', error);
+          alert('An error occurred while submitting the request.');
+      });
+    };
+
+    //to hide the rest of the options on the dropdown menu after the user selects one.
+    document.addEventListener('click', (e) => {
+      if (!searchInput.contains(e.target) && !suggestionsList.contains(e.target)) {
+        suggestionsList.style.display = 'none';
+      }
+    });
+
+    // cookie management for csrf token
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+          const cookies = document.cookie.split(';');
+          for (let i = 0; i < cookies.length; i++) {
+              const cookie = cookies[i].trim();
+              if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                  cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                  break;
+              }
+          }
+      }
+      return cookieValue;
+    }
+  </script>
+</body>
+</html>

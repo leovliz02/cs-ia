@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manager Portal – Approvals Pending</title>
+  {% load static%}
+  <link rel="stylesheet" href="{% static 'styles.css' %}">
+  <style>
+
+    .container {
+      max-width: 800px;
+      margin: 2rem auto;
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .approval-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      background-color: #fefefe;
+    }
+
+    .approval-actions button {
+      margin-left: 0.5rem;
+      padding: 0.4rem 0.8rem;
+      font-size: 0.9rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .approve {
+      background-color: #28a745;
+      color: white;
+    }
+
+    .approve:hover {
+      background-color: #218838;
+    }
+
+    .reject {
+      background-color: #dc3545;
+      color: white;
+    }
+
+    .reject:hover {
+      background-color: #c82333;
+    }
+
+    .no-approvals-message {
+        text-align: center;
+        color: #6c757d;
+        padding: 2rem;
+        border: 1px dashed #ccc;
+        border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Manager Portal</h1>
+    <a href="{% url 'logout' %}" class="logout-link">Logout</a> {# Corrected logout URL #}
+  </header>
+
+  <nav>
+    <a href="{% url 'manager_teams_page' %}">Teams</a> {# Corrected Django URL #}
+    <a href="{% url 'manager_demands_page' %}">Demands</a> {# Corrected Django URL #}
+    <a href="{% url 'manager_approvals_page' %}" class="active">Approvals Pending</a> {# Corrected Django URL #}
+  </nav>
+
+  <div class="container">
+    <h2>Pending Approvals</h2>
+    <div id="approvalList">
+      {# Approvals will be dynamically loaded here #}
+      <p id="loadingApprovals">Loading pending approvals...</p>
+      <div id="noApprovalsMessage" class="no-approvals-message" style="display:none;">
+        No pending approvals at this time.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const approvalListContainer = document.getElementById('approvalList');
+    const loadingApprovalsMessage = document.getElementById('loadingApprovals');
+    const noApprovalsMessage = document.getElementById('noApprovalsMessage');
+
+    // get approvals data from django 
+    const approvals = JSON.parse('{{ approvals_json|escapejs }}');
+
+    // cookie management for crsf token
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
+    // displays all approvals
+    function renderApprovals() {
+        approvalListContainer.innerHTML = ''; 
+        loadingApprovalsMessage.style.display = 'none'; 
+
+        if (approvals.length === 0) {
+            noApprovalsMessage.style.display = 'block';
+            return;
+        } else {
+            noApprovalsMessage.style.display = 'none';
+        }
+
+        approvals.forEach(request => {
+            const approvalItem = document.createElement('div');
+            approvalItem.classList.add('approval-item');
+            approvalItem.dataset.requestId = request.request_id;
+            approvalItem.dataset.requestType = request.type;
+
+            approvalItem.innerHTML = `
+                <div><strong>Request:</strong> ${request.description}</div>
+                <div class="approval-actions">
+                    <button class="approve" data-action="approve">Approve</button>
+                    <button class="reject" data-action="reject">Reject</button>
+                </div>
+            `;
+            approvalListContainer.appendChild(approvalItem);
+        });
+    }
+
+    // function to handle approval/rejection actions on approvals
+    async function handleApprovalAction(button) {
+        const item = button.closest('.approval-item');
+        const requestId = item.dataset.requestId;
+        const requestType = item.dataset.requestType;
+        const action = button.dataset.action;
+
+        let apiUrl = '';
+        if (requestType === 'capacity_change') {
+            apiUrl = `/api/approvals/capacity/${requestId}/${action}/`;
+        } else if (requestType === 'demand_edit') {
+            apiUrl = `/api/approvals/demand/${requestId}/${action}/`;
+        } else {
+            alert('Unknown request type.');
+            return;
+        }
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({}) 
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert(data.message);
+                item.remove(); 
+            } else {
+                alert('Action failed: ' + (data.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while processing the request.');
+        }
+    }
+
+  
+    approvalListContainer.addEventListener('click', (event) => {
+        if (event.target.classList.contains('approve') || event.target.classList.contains('reject')) {
+            handleApprovalAction(event.target);
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', renderApprovals);
+
+  </script>
+</body>
+</html>

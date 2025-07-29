@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'styles.css' %}">
+  <title>Login</title>
+  <style>
+    body {
+      display: flex;           
+      justify-content: center; 
+      align-items: center;     
+      min-height: 100vh;         
+      margin: 0; 
+      background-color: #f0f2f5; 
+    }
+
+    .login-container {
+      background: white;
+      padding: 2rem 3rem;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .input-group {
+      position: relative;
+      margin-bottom: 1.5rem;
+    }
+
+    input[type="text"], 
+    input[type="password"] {
+      width: 100%;
+      padding: 0.5rem 2.5rem 0.5rem 0.5rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+
+    .toggle-visibility {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      user-select: none;
+      font-size: 1.2rem;
+      color: #666;
+    }
+
+    button {
+      width: 100%;
+      padding: 0.6rem;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 44px;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    #errorMsg {
+      color: red;
+      margin-top: 0.8rem;
+      display: none;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <form id="loginForm" class="login-container">
+    <h2>Login</h2>
+    <div class="input-group">
+      <input type="text" id="username" placeholder="Username" required />
+    </div>
+    <div class="input-group">
+      <input type="password" id="password" placeholder="Password" required />
+      <span id="togglePassword" class="toggle-visibility">🙈</span>
+    </div>
+    <button type="submit">Sign In</button>
+    <p id="errorMsg"></p>
+  </form>
+  
+  <script>
+    // Toggle password visibility
+    const passwordInput = document.getElementById("password");
+    const togglePassword = document.getElementById("togglePassword");
+
+    togglePassword.addEventListener("click", function () {
+      const isHidden = passwordInput.type === "password";
+      passwordInput.type = isHidden ? "text" : "password";
+      this.textContent = isHidden ? "🐵" : "🙈";
+    });
+
+    // Login form logic
+    const loginForm = document.getElementById("loginForm");
+
+    loginForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+      const errorMsg = document.getElementById("errorMsg");
+
+      errorMsg.textContent = "";
+      errorMsg.style.display = "none";
+
+      fetch("/api/login/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCookie("csrftoken")
+        },
+        body: JSON.stringify({ username, password })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          if (data.role === "manager") {
+            window.location.href = "http://127.0.0.1:8000/manager/teams/"; 
+          } else if (data.role === "employee") {
+            window.location.href = "http://127.0.0.1:8000/employee/personal/"; 
+          } else {
+            errorMsg.textContent = "Login successful, but role not recognized. Please contact support.";
+            errorMsg.style.display = "block";
+          }
+        } else {
+          errorMsg.textContent = data.message || "Invalid username or password.";
+          errorMsg.style.display = "block";
+        }
+      })
+      .catch(error => {
+        console.error("Login failed:", error);
+        errorMsg.textContent = "An error occurred during login. Please try again later.";
+        errorMsg.style.display = "block";
+      });
+    });
+
+    // Get CSRF token from cookies
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== "") {
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + "=")) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+  </script>
+</body>
+</html>
