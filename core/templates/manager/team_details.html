@@ -354,10 +354,9 @@
     <a href="{% url 'manager_approvals_page' %}">Approvals Pending</a>
   </nav>
 
-
   <div class="container">
     <div class="top-bar">
-      <button id="add_new_team_button">+ Add New Team</button>
+      <button id="addNewTeamBtn">+ Add New Team</button>
     </div>
     <div class="team-grid" id="teamsContainer">
       {# loading team data into the table #}
@@ -372,29 +371,25 @@
     </div>
   </div>
 
-
   <!-- Popup for Add/Edit Team -->
-  <div class="popup-bg" id="team_popup">
+  <div class="popup-bg" id="teamPopup">
     <div class="popup">
-      <h3 id="popup_title"></h3> 
-      <input type="hidden" id="team_id_input" />
+      <h3 id="popupTitle"></h3> 
+      <input type="hidden" id="teamId" />
 
-      <label for="team_name_input">Team Name:</label>
-      <input type="text" id="team_name_input" />
+      <label for="teamName">Team Name:</label>
+      <input type="text" id="teamName" />
 
       <label>Current Team Members:</label>
-      <ul id="current_team_members_list" class="member-list">
+      <ul id="currentTeamMembersList" class="member-list">
         <li>No members yet.</li> 
       </ul>
 
       <div class="add-user-section">
-        <select id="available_users_select">
-          <option value="NA">Select user to add</option>
-          {% for user in available_users %}
-            <option value = "{{ user.user_id }}"> {{ user.first_name }} {{ user.last_name }}</option>
-          {% endfor %}
+        <select id="availableUsersSelect">
+          <option value="">Select user to add</option>
         </select>
-        <button id="add_user_to_team_button">Add User</button>
+        <button id="addUserToTeamBtn">Add User</button>
       </div>
 
       <div class="actions">
@@ -405,42 +400,426 @@
     </div>
   </div>
 
+  <!-- Popup for Efficiency Report -->
+  <div class="popup-bg" id="efficiencyReportPopup">
+    <div class="popup">
+        <h3>Teams Efficiency Report</h3>
+        <div id="efficiencyReportContent">
+            <p id="reportLoadingMessage" style="display:none; text-align: center;">Generating report...</p>
+            <p id="reportErrorMessage" style="display:none; color: red; text-align: center;"></p>
+            <p id="reportNoDataMessage" style="display:none; text-align: center;">No data to generate report. Ensure teams have completed demands.</p>
+            <table id="efficiencyReportTable" style="display:none;">
+                <thead>
+                    <tr>
+                        <th>Team Name</th>
+                        <th>Rating</th>
+                        <th>Early</th>
+                        <th>On-Time</th>
+                        <th>Overdue</th>
+                        <th>Total Completed</th>
+                    </tr>
+                </thead>
+                <tbody id="efficiencyReportTableBody">
+                </tbody>
+            </table>
+        </div>
+        <button id="reportPopupCloseBtn">Close</button>
+    </div>
+  </div>
 
-<script>
+  <script>
+    const teamsContainer = document.getElementById('teamsContainer');
+    const loadingMessage = document.getElementById('loadingMessage');
+    const noTeamsMessage = document.getElementById('noTeamsMessage');
+    const teamPopup = document.getElementById('teamPopup');
+    const popupTitle = document.getElementById('popupTitle');
+    const teamIdInput = document.getElementById('teamId');
+    const teamNameInput = document.getElementById('teamName');
+    const teamInfoInput = document.getElementById('teamInfo');
+    const currentTeamMembersList = document.getElementById('currentTeamMembersList');
+    const availableUsersSelect = document.getElementById('availableUsersSelect');
+    const addNewTeamBtn = document.getElementById('addNewTeamBtn');
+    const addUserToTeamBtn = document.getElementById('addUserToTeamBtn');
+    const saveTeamBtn = document.getElementById('saveTeamBtn');
+    const deleteTeamBtn = document.getElementById('deleteTeamBtn');
+    const cancelPopupBtn = document.getElementById('cancelPopupBtn');
+    const generateReportBtn = document.getElementById('generateReportBtn');
+    const efficiencyReportPopup = document.getElementById('efficiencyReportPopup');
+    const efficiencyReportContent = document.getElementById('efficiencyReportContent');
+    const reportLoadingMessage = document.getElementById('reportLoadingMessage');
+    const reportErrorMessage = document.getElementById('reportErrorMessage');
+    const reportNoDataMessage = document.getElementById('reportNoDataMessage');
+    const efficiencyReportTable = document.getElementById('efficiencyReportTable');
+    const efficiencyReportTableBody = document.getElementById('efficiencyReportTableBody');
+    const reportPopupCloseBtn = document.getElementById('reportPopupCloseBtn');
 
-// for the add new team button 
-    const add_new_team_button  = document.getElementById("add_new_team_button");
-    const team_popup = document.getElementById("team_popup");
-    const popup_title = document.getElementById("popup_title");
-    const team_id_input = document.getElementById("team_id_input");
-    const team_name_input = document.getElementById("team_name_input");
-    const current_team_members_list = document.getElementById("current_team_members_list");
-    const available_users_select = document.getElementById("available_users_select");
 
-    const cancelPopupBtn = document.getElementById("cancelPopupBtn");
+    let currentEditTeamId = null;  
 
-    add_new_team_button.addEventListener("click", () => {
-        // Reset popup fields for new team creation
-        popup_title.textContent = "Add New Team";
-        team_id_input.value = "";
-        team_name_input.value = "";
-        current_team_members_list.innerHTML = '<li>No members yet.</li>';
-        available_users_select.selectedIndex = 0;
+    function showPopup(popupElement) {
+      popupElement.style.display = 'flex';
+    }
 
-        // to show popup
-        team_popup.style.display = "flex";
-    });
+    function hidePopup(popupElement) {
+      popupElement.style.display = 'none';
+      if (popupElement === teamPopup) {
+        currentEditTeamId = null; 
+        teamIdInput.value = '';
+        teamNameInput.value = '';
+        //teamInfoInput.value = '';
+        currentTeamMembersList.innerHTML = '';
+        availableUsersSelect.innerHTML = '<option value="">Select user to add</option>';
+        deleteTeamBtn.style.display = 'inline-block'; 
+      }
 
-    // clicking cancel closes the popup 
-    cancelPopupBtn.addEventListener("click", () => {
-        team_popup.style.display = "none";
-    });
+      if (popupElement === efficiencyReportPopup) {
+          reportLoadingMessage.style.display = 'none';
+          reportErrorMessage.style.display = 'none';
+          reportNoDataMessage.style.display = 'none';
+          efficiencyReportTable.style.display = 'none';
+          efficiencyReportTableBody.innerHTML = '';
+      }
+    }
 
-    // so that closing anywhere outside the popup can close it
-    team_popup.addEventListener("click", (e) => {
-        if (e.target === team_popup) {
-        team_popup.style.display = "none";
+    function renderTeamMembers(members) {
+        currentTeamMembersList.innerHTML = '';
+        if (members && members.length > 0) {
+            members.forEach(member => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${member.first_name} ${member.last_name} (${member.username})</span>
+                    <button class="remove-btn" data-user-id="${member.id}">Remove</button>
+                `;
+                currentTeamMembersList.appendChild(li);
+            });
+        } else {
+            currentTeamMembersList.innerHTML = '<li>No members yet.</li>';
+        }
+    }
+
+    function populateAvailableUsers(users) {
+        availableUsersSelect.innerHTML = '<option value="">Select user to add</option>';
+        users.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user.emp_id;
+            option.textContent = `${user.first_name} ${user.last_name} (${user.username})`;
+            availableUsersSelect.appendChild(option);
+        });
+    }
+
+    async function fetchTeams() {
+      loadingMessage.style.display = 'block';
+      teamsContainer.innerHTML = ''; 
+      try {
+        const response = await fetch('/api/manager/teams/');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const teams = await response.json();
+        renderTeams(teams);
+      } catch (error) {
+        console.error('Error fetching teams:', error);
+        teamsContainer.innerHTML = '<p>Error loading teams. Please try again.</p>';
+        noTeamsMessage.style.display = 'none';
+      } finally {
+        loadingMessage.style.display = 'none';
+      }
+    }
+
+    function renderTeams(teams) {
+        teamsContainer.innerHTML = ''; 
+        if (teams.length === 0) {
+            noTeamsMessage.style.display = 'block';
+        } else {
+            noTeamsMessage.style.display = 'none';
+            teams.forEach(team => {
+                const teamBox = document.createElement('div');
+                teamBox.classList.add('team-box');
+                teamBox.textContent = team.name;
+                teamBox.dataset.teamId = team.id;  
+                teamBox.onclick = () => openTeamPopup(team.id);
+                teamsContainer.appendChild(teamBox);
+            });
+        }
+    }
+
+    async function fetchTeamDetails(teamId) {
+        try {
+            const response = await fetch(`/api/manager/teams/${teamId}/`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const team = await response.json();
+            return team;
+        } catch (error) {
+            console.error('Error fetching team details:', error);
+            alert('Failed to load team details.');
+            return null;
+        }
+    }
+
+    async function fetchAvailableUsers() {
+        try {
+            const response = await fetch('/api/manager/unassigned_users/'); 
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const users = await response.json();
+            return users;
+        } catch (error) {
+            console.error('Error fetching available users:', error);
+            return [];
+        }
+    }
+
+    async function openTeamPopup(teamId = null) {
+      currentEditTeamId = teamId;
+      hidePopup(teamPopup); 
+
+      if (teamId) {
+        popupTitle.textContent = 'Edit Team';
+        deleteTeamBtn.style.display = 'inline-block'; 
+        const team = await fetchTeamDetails(teamId);
+        if (team) {
+          teamIdInput.value = team.id;
+          teamNameInput.value = team.name;
+          renderTeamMembers(team.members);
+        }
+      } else {
+        popupTitle.textContent = 'Add New Team';
+        deleteTeamBtn.style.display = 'none'; 
+      }
+      
+      const availableUsers = await fetchAvailableUsers();
+      populateAvailableUsers(availableUsers.unassigned_users);
+
+      showPopup(teamPopup);
+    }
+
+    async function saveTeam() {
+      const teamId = teamIdInput.value;
+      const teamName = teamNameInput.value.trim();
+
+      if (!teamName) {
+        alert('Team Name cannot be empty.');
+        return;
+      }
+
+      const method = teamId ? 'PUT' : 'POST';
+      const url = teamId ? `/api/manager/teams/${teamId}/` : '/api/manager/teams/';
+      
+      try {
+        const response = await fetch(url, {
+          method: method,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+          },
+          body: JSON.stringify({
+            name: teamName,
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Failed to save team: ${errorData.message || response.statusText}`);
+        }
+
+        alert('Team saved successfully!');
+        hidePopup(teamPopup);
+        fetchTeams(); 
+      } catch (error) {
+        console.error('Error saving team:', error);
+        alert(error.message);
+      }
+    }
+
+    async function deleteTeam() {
+        if (!confirm('Are you sure you want to delete this team? This action cannot be undone.')) {
+            return;
+        }
+
+        const teamId = teamIdInput.value;
+        try {
+            const response = await fetch(`/api/manager/teams/${teamId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`Failed to delete team: ${errorData.message || response.statusText}`);
+            }
+
+            alert('Team deleted successfully!');
+            hidePopup(teamPopup);
+            fetchTeams(); 
+        } catch (error) {
+            console.error('Error deleting team:', error);
+            alert(error.message);
+        }
+    }
+
+    async function addUserToTeam() {
+        const empId = availableUsersSelect.value;
+        const teamId = teamIdInput.value;
+
+        if (!empId) {
+            alert('Please select a user to add.');
+            return;
+        }
+        if (!teamId) {
+            alert('Cannot add user: no team selected.');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/manager/teams/${teamId}/add_user/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ emp_id: empId })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`Failed to add user: ${errorData.message || response.statusText}`);
+            }
+
+            alert('User added to team successfully!');
+            openTeamPopup(teamId); 
+        } catch (error) {
+            console.error('Error adding user to team:', error);
+            alert(error.message);
+        }
+    }
+
+    async function removeUserFromTeam(empId) {
+        const teamId = teamIdInput.value;
+        if (!teamId) {
+            alert('Cannot remove user: no team selected.');
+            return;
+        }
+
+        if (!confirm('Are you sure you want to remove this user from the team?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/manager/teams/${teamId}/remove_user/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ emp_id: empId })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`Failed to remove user: ${errorData.message || response.statusText}`);
+            }
+
+            alert('User removed from team successfully!');
+            openTeamPopup(teamId); 
+        } catch (error) {
+            console.error('Error removing user from team:', error);
+            alert(error.message);
+        }
+    }
+        
+    currentTeamMembersList.addEventListener('click', (event) => {
+        if (event.target.classList.contains('remove-btn')) {
+            const empId = event.target.dataset.userId;
+            removeUserFromTeam(empId);
         }
     });
+    
 
-</script>
+    async function generateEfficiencyReport() {
+        hidePopup(efficiencyReportPopup); 
+        showPopup(efficiencyReportPopup); 
+        reportLoadingMessage.style.display = 'block';
+        reportErrorMessage.style.display = 'none';
+        reportNoDataMessage.style.display = 'none';
+        efficiencyReportTable.style.display = 'none';
+        efficiencyReportTableBody.innerHTML = ''; 
+
+        try {
+            const response = await fetch('/api/manager/teams/efficiency-report/');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to fetch efficiency report.');
+            }
+            const data = await response.json();
+            const reportData = data.teams;  
+
+            reportLoadingMessage.style.display = 'none';
+
+            if (reportData.length === 0) {
+                reportNoDataMessage.style.display = 'block';
+                return "booboo";
+            }
+
+            efficiencyReportTable.style.display = 'table';  
+            reportData.forEach(team => {
+                const row = efficiencyReportTableBody.insertRow();
+                
+                const ratingClass = team.efficiency_rating >= 0.8 ? 'high' : 
+                                    (team.efficiency_rating >= 0.5 ? 'medium' : 'low');
+
+                row.innerHTML = `
+                    <td>${team.team_name}</td>
+                    <td class="efficiency-rating-cell ${ratingClass}">${(team.efficiency_rating * 100).toFixed(2)}%</td>
+                    <td>${team.early_completions}</td>
+                    <td>${team.on_time_completions}</td>
+                    <td>${team.overdue_completions}</td>
+                    <td>${team.total_completed_demands}</td>
+                `;
+            });
+
+        } catch (error) {
+            console.error('Error generating efficiency report:', error);
+            reportLoadingMessage.style.display = 'none';
+            reportErrorMessage.textContent = `Error: ${error.message}`;
+            reportErrorMessage.style.display = 'block';
+        }
+    }
+
+
+    addNewTeamBtn.addEventListener('click', () => openTeamPopup(null));
+    cancelPopupBtn.addEventListener('click', () => hidePopup(teamPopup));
+    saveTeamBtn.addEventListener('click', saveTeam);
+    deleteTeamBtn.addEventListener('click', deleteTeam);
+    addUserToTeamBtn.addEventListener('click', addUserToTeam);
+    generateReportBtn.addEventListener('click', generateEfficiencyReport); 
+    reportPopupCloseBtn.addEventListener('click', () => hidePopup(efficiencyReportPopup)); 
+
+
+
+    document.addEventListener('DOMContentLoaded', fetchTeams);
+
+
+    // csrf cookie handling
+        function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
+  </script>
+</body>
+</html>

@@ -6,11 +6,12 @@ import json
 from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth import authenticate, login, logout, get_user_model
+from django.contrib.auth.decorators import login_required 
 from django.db.models import Sum
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from .models import Demand
-
+from functools import wraps
 
 from core.models import Capacity, CapacityChangeRequest, Demand, DemandDailyAllocation, DemandEditRequest, Manager, Employee, Notifications, Team
 
@@ -21,34 +22,33 @@ def logout_view(request):
 
 #decorator views to maintain data integrity and to establish access levels
 def manager_required(view_func):
+        @wraps(view_func)
         def wrapper(request, *args, **kwargs):
-            if not request.user.is_authenticated:
-                return redirect('login_page')
-            # Rely directly on the is_manager field, which is now the source of truth.
-            if not request.user.is_manager:
-                return JsonResponse({'success': False, 'message': 'Unauthorized access: Manager role required.'}, status=403)
+            if not request.user.groups.filter(name='Manager').exists():
+                return JsonResponse({'success': False, 'message': 
+                                     'User is not associated with'
+                                     ' an manager profile.'}, 
+                                     status=403)
             return view_func(request, *args, **kwargs)
         return wrapper
 
 def employee_required(view_func):
+        @wraps(view_func)
         def wrapper(request, *args, **kwargs):
-            if not request.user.is_authenticated:
-                return redirect('login_page')
-            # If not a manager, assume employee. is_staff might imply management/admin, so block.
-            if request.user.is_manager or request.user.is_staff:
-                return JsonResponse({'success': False, 'message': 'Unauthorized access: Employee role required.'}, status=403)
-            # Ensure an employee profile exists, as this view relies on it.
-            if not hasattr(request.user, 'employee_profile'):
-                return JsonResponse({'success': False, 'message': 'User is not associated with an employee profile.'}, status=403)
+            if not request.user.groups.filter(name='Employee').exists():
+                return JsonResponse({'success': False, 'message': 
+                                     'User is not associated with'
+                                     ' an employee profile.'}, 
+                                     status=403)
             return view_func(request, *args, **kwargs)
         return wrapper
 
 #login details 
     #render page
 def show_login_page (request):
-        return render (request, 'registration/login.html')
+    return render (request, 'registration/login.html')
 
-    #login api
+#login api
 def login_view(request):
         if request.method == "POST":
             try:
@@ -61,6 +61,7 @@ def login_view(request):
                 return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
 
             user = authenticate(request, username=username, password=password)
+            user = User.objects.get(username=username)
 
             if user is not None:
                 login(request, user) 
@@ -77,6 +78,7 @@ def login_view(request):
 # EMPLOYEE VIEWS
 # demands view 
     #render demands_page.html
+@login_required(login_url='login_page')
 @employee_required
 def employee_demands_view(request):    
         demands = Demand.objects.filter(team__members=request.user.employee_profile).order_by('start_date')
@@ -342,7 +344,8 @@ def employee_commitments_view(request):
 # team_details.html -> render
 @manager_required
 def manager_teams_page(request):
-    available_users = User.objects.filter(is_manager=False, team__isnull=True)
+    #available_users = User.objects.filter(is_manager=False, team__isnull=True)
+    available_users = User.objects.all()
     team = Team.objects.all()
     
     context = {
@@ -418,6 +421,23 @@ def manager_team_detail_api(request, team_id):
         team.delete()
         return JsonResponse({'success': True, 'message': f'Team "{team_name}" deleted successfully.'})
 
+@manager_required
+def manager_unassigned_users_api(request):
+    if request.method == "GET":
+        employees = Employee.objects.all()
+        employee_data=[]
+        for employee in employees:
+            if(employee.team is None):
+                employee_data.append({
+                    'id': employee.user.id,
+                    'emp_id': employee.employee_ID,
+                    'first_name': employee.user.first_name,
+                    'last_name': employee.user.last_name,
+                    'username': employee.user.username
+                })
+        #users = User.objects.get(employee_profile__team is null)
+    
+    return JsonResponse({'unassigned_users': employee_data})
 
 @manager_required
 @require_POST
@@ -425,18 +445,25 @@ def manager_add_user_to_team_api(request, team_id):
     team = get_object_or_404(Team, team_ID=team_id)
     try:
         data = json.loads(request.body)
-        user_id = data.get('user_id')
-        if not user_id:
+        emp_id = data.get('emp_id')
+        print(emp_id)
+        if not emp_id:
             return JsonResponse({'success': False, 'message': 'User ID is required.'}, status=400)
 
-        user = get_object_or_404(User, id=user_id)
+        employee = get_object_or_404(Employee, employee_ID=emp_id)
+        print(employee.team)
 
-        if user.employee_profile.team:
-            return JsonResponse({'success': False, 'message': f'User {user.username} already in team {user.employee_profile.team.team_name}.'}, status=400)
+        if employee.team:
+            return JsonResponse({'success': False, 'message': f'User {employee.user.username} already in team {employee.team.team_name}.'}, status=400)
+        
+        #if Team.members.count >6:
+        #    return JsonResponse({'success': False, 'message': f'Team {Team.team_name} already has the maximum of six members.'}, status=400)
 
-        user.employee_profile.team = team
-        user.save()
-        return JsonResponse({'success': True, 'message': f'User {user.username} added to {team.team_name}.'})
+        employee.team = team
+        employee.save()
+        #Notifications.objects.create(notification_message=f"You have been added to Team {Team.team_name}.", employee=employee.user)
+
+        return JsonResponse({'success': True, 'message': f'User {employee.user.username} added to {team.team_name}.'})
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
 
@@ -444,21 +471,24 @@ def manager_add_user_to_team_api(request, team_id):
 @manager_required
 @require_POST
 def manager_remove_user_from_team_api(request, team_id):
-    team = get_object_or_404(Team, teamID=team_id)
+    team = get_object_or_404(Team, team_ID=team_id)
     try:
         data = json.loads(request.body)
-        user_id = data.get('user_id')
-        if not user_id:
+        emp_id = data.get('emp_id')
+        if not emp_id:
             return JsonResponse({'success': False, 'message': 'User ID is required.'}, status=400)
 
-        user = get_object_or_404(User, id=user_id)
+        employee = get_object_or_404(Employee, employee_ID=emp_id)
 
-        if user.employee_profile.team != team:
+        if employee.team != team:
             return JsonResponse({'success': False, 'message': 'User not in this team.'}, status=400)
 
-        user.employee_profile.team = None
-        user.save()
-        return JsonResponse({'success': True, 'message': f'User {user.username} removed from {team.team_name}.'})
+        employee.team = None
+        employee.save()
+        print(f"Employee {employee.user.get_full_name()} removed from Team {Team.team_name}.")
+        #Notifications.objects.create(notification_message=f"You have been removed from Team {Team.team_name}.", employee=employee.user)
+        
+        return JsonResponse({'success': True, 'message': f'User {employee.user.username} removed from {team.team_name}.'})
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
     
@@ -596,8 +626,8 @@ def manage_demand_api(request, demand_id=None):
             "demand_name": demand.demand_name,
             "start_date": demand.start_date.isoformat() if demand.start_date else None,
             "time_needed": demand.time_needed,
-            "team_id": demand.team.team_id if demand.team else None,
-            "allocation_mode": request.GET.get("allocation_mode", "NA"),
+            "team_id": demand.team_id if demand.team else None,
+            "allocation_mode": demand.allocation_mode if demand.team else "NA",
             "predicted_end_date": demand.estimated_end_date.isoformat() if demand.estimated_end_date else None,
             "actual_end_date": demand.actual_end_date.isoformat() if demand.actual_end_date else None,
             "demand_completion_status": demand.demand_completion_status
@@ -611,30 +641,37 @@ def manage_demand_api(request, demand_id=None):
         team_id = data.get("team_id") if (data.get ("team_id")) else None
         allocation_mode = data.get("allocation_mode")
         predicted_end_date = parse_date(data.get("predicted_end_date")) if data.get("predicted_end_date") else None
-        status = data.get("demand_status")
-
+        status = data.get("demand_completion_status")
+        print('Allocation mode is ',allocation_mode)
         try:
-            predicted_end_date = datetime(predicted_end_date, "%Y-%m-%d").date()
-            start_date = datetime(start_date, "%Y-%m-%d").date()
+            if predicted_end_date is not None:
+                datetime(predicted_end_date, "%Y-%m-%d").date()
+            #datetime(start_date, "%Y-%m-%d")
         except ValueError:
             return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
 
+        print('input validation completed')
         if request.method == "POST":
+            print('preparing to insert demand')
             demand = Demand.objects.create(
                 demand_name=name,
                 start_date=start_date,
                 time_needed=hours,
-                demand_completion_status=status.capitalize() if status else "Pending"
+                demand_completion_status=status if status else "pending",
+                allocation_mode=allocation_mode
             )
+            print('successfully created',demand)
         else:
+            print('preparing to update demand')
             demand = get_object_or_404(Demand, demandID=demand_id)
             demand.demand_name = name
             demand.start_date = start_date
             demand.time_needed = hours
-            demand.demand_completion_status = status.capitalize() if status else "Pending"
+            demand.demand_completion_status = status if status else "pending"
 
         demand.clear_previous_allocations()
 
+        print('going to compute end date')
         if team_id:
             if allocation_mode == "even":
                 demand.set_assigned_team(team_id=int(team_id), hours_predicted=hours, start_date=start_date)
@@ -655,7 +692,7 @@ def manage_demand_api(request, demand_id=None):
                     demand.set_assigned_team(team_id=team_id, hours_predicted=hours, start_date=start_date)
                 else:
                     return JsonResponse({"error": "Selected team cannot meet the deadline."}, status=400)
-
+        print('going to save demand')
         demand.save()
         return JsonResponse({"message": f"Demand '{demand.demand_name}' saved successfully."})
 

@@ -219,108 +219,101 @@
   }
 
   // event listener to call API when the button is clicked
-    document.addEventListener("DOMContentLoaded", function() {
-    const today = new Date();
-    const minDate = new Date(today);
-    minDate.setDate(minDate.getDate() + 7);
+document.addEventListener("DOMContentLoaded", function () {
+  const today = new Date();
 
-    flatpickr("#dateRange", {
-        mode: "range",
-        dateFormat: "Y-m-d",
-        minDate: minDate,
-        onClose: function(selectedDates, dateStr, instance) {
-        if (selectedDates.length === 1) {
-            const singleDate = instance.formatDate(selectedDates[0], "Y-m-d");
-            instance.setDate([selectedDates[0], selectedDates[0]], false);
-            instance.input.value = `${singleDate} to ${singleDate}`;
+  const minDate = new Date(today);
+  minDate.setDate(minDate.getDate() + 7);
+
+  flatpickr("#dateRange", {
+    mode: "range",
+    dateFormat: "Y-m-d",
+    minDate: minDate,
+    onClose: function (selectedDates, dateStr, instance) {
+
+      if (selectedDates.length === 1) {
+        const singleDate = instance.formatDate(selectedDates[0], "Y-m-d");
+        instance.setDate([selectedDates[0], selectedDates[0]], false);
+        instance.input.value = `${singleDate} to ${singleDate}`;
+
+      } else if (selectedDates.length === 2) {
+          const start = selectedDates[0];
+          const end = selectedDates[1];
+          const diffInMs = end - start;
+          const diffInDays = diffInMs / (1000 * 60 * 60 * 24);
+
+          if (diffInDays > 28) {
+            alert("Date range cannot exceed 28 days. Please select a shorter range.");
+            instance.clear();
         }
-        } 
-    });
-    });
-
-    const form = document.getElementById("capacityForm");
-    const employee_ID = "{{ employee_ID }}";
-
-    // event listener to validate the entries before submit is clicked
-    form.addEventListener("submit", function (e) {
-      e.preventDefault();
-
-      const newCapacity = document.getElementById("newCapacity").value;
-      const dateRange = document.getElementById("dateRange").value;
-
-      const dates = dateRange.split(" to ");
-      if (dates.length < 1 || dates.length > 2) {
-        alert("Please select a valid date range.");
-        return;
       }
-
-      const startDate = dates[0];
-      const endDate = dates.length === 2 ? dates[1] : dates[0];
-
-      fetch(`/api/capacity/check_overlap/?employee_id=${employee_ID}&start_date=${startDate}&end_date=${endDate}`).then(response => response.json())
-    .then(data => {
-      if (data.overlap) {
-        alert("A capacity change request already exists for this employee in the selected date range.");
-        return;
       }
+    });
 
-      fetch('/api/capacity/change_request/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCookie('csrftoken'),
-        },
+  const form = document.getElementById("capacityForm");
+  const employee_ID = "{{ employee_ID }}";
 
-        //passing the values to JSON to render into the capacity_change_request function
-        body: JSON.stringify({
-          new_capacity: newCapacity,
-          start_date: startDate,
-          end_date: endDate,
-        })
-      })
-        .then(response => {
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
 
-          if (!response.ok) {
-            return response.text().then(text => {
-                throw new Error(`${text}`);
-                console.log(text)
-            });
-          }
-          return response.json();
-        })
-        .then(data => {
-          if (data.success) {
-            alert(`Your request to change capacity to ${newCapacity} hours from ${startDate} to ${endDate} has been submitted.`);
-            closePopup();
-            location.reload();
-          } else {
-            alert((data.message || 'Unknown error'));
-          }
-        })
+    const newCapacity = document.getElementById("newCapacity").value;
+    const dateRange = document.getElementById("dateRange").value;
 
-        // error message for if some reason the server has not been able to return a message to the HTML or the error message returned has not been parsed properly 
-        .catch(error => {
-          console.error('Error submitting capacity change request:', error);
-          alert(error.message);
+    const dates = dateRange.split(" to ");
+    if (dates.length < 1 || dates.length > 2) {
+      alert("Please select a valid date range.");
+      return;
+    }
+
+    const startDate = dates[0];
+    const endDate = dates.length === 2 ? dates[1] : dates[0];
+
+    fetch(`/api/capacity/check_overlap/?employee_id=${employee_ID}&start_date=${startDate}&end_date=${endDate}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.overlap) {
+          alert("A capacity change request already exists for this employee in the selected date range.");
+          return;
+        }
+
+        return fetch('/api/capacity/change_request/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken'),
+          },
+          body: JSON.stringify({
+            new_capacity: newCapacity,
+            start_date: startDate,
+            end_date: endDate,
+          })
         });
-    });
+      })
+      .then(response => {
+        if (!response) return; 
+        if (!response.ok) {
+          return response.text().then(text => {
+            throw new Error(text);
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data && data.success) {
+          alert(`Your request to change capacity to ${newCapacity} hours from ${startDate} to ${endDate} has been submitted.`);
+          closePopup();
+          location.reload();
+        } else if (data) {
+          alert(data.message || 'Unknown error');
+        }
+      })
+      .catch(error => {
+        console.error('Error submitting capacity change request:', error);
+        alert(error.message);
+      });
+  });
+});
 
-    
-
-
-  
-
-    document.addEventListener("DOMContentLoaded", function() {
-    const today = new Date();
-
-    const minDate = new Date(today);
-    minDate.setDate(minDate.getDate() + 7);
-
-    const maxDate = new Date(minDate);
-    maxDate.setDate(maxDate.getDate() + 28);
-    })
-
-    })
 
     // js for new notification
 

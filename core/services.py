@@ -18,7 +18,7 @@ def get_hours_allocated_for_date_helper(team_obj, target_date):
         return 0.0
 
 @transaction.atomic
-def change_employee_capacity_for_range(employee_id: int, target_start_date: date, target_end_date: date, new_capacity_hours: float):
+def change_employee_capacity_for_range(employee_id, target_start_date, target_end_date, new_capacity_hours):
     from core.models import Employee, Capacity, CapacityChangeRequest
     if not isinstance(target_start_date, date) or not isinstance(target_end_date, date):
         raise TypeError("target_start_date and target_end_date must be datetime.date objects.")

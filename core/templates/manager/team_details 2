@@ -652,7 +652,7 @@
     // Delete team
     deleteTeamBtn.addEventListener('click', async function() {
         if (!currentEditTeamId || !confirm('Are you sure you want to delete this team? This action cannot be undone.')) {
-            return; // Don't proceed if no team selected or user cancels
+            return; 
         }
 
         try {
@@ -674,7 +674,7 @@
     // --- 8. Event Listener for "Add New Team" button ---
     addNewTeamBtn.addEventListener('click', () => openTeamPopup(null)); // Pass null to indicate new team
 
-    // Fetches details for a specific team from the backend API
+    // fetches the efficiency report
     async function generateEfficiencyReport() {
         hidePopup(efficiencyReportPopup); 
         showPopup(efficiencyReportPopup); 

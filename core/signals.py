@@ -1,5 +1,6 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
+from django.contrib.auth.models import Group
 
 from .models import User, Manager, Employee
 
@@ -18,14 +19,20 @@ def create_or_update_profile_from_user(sender, instance, created, **kwargs):
 
         if not instance._state.adding and not created and not instance._state.db:
             return
+
+        manager_group, _ = Group.objects.get_or_create(name="Manager")
+        employee_group, _ = Group.objects.get_or_create(name="Employee")
         
         if instance.is_manager:
+
+            instance.groups.add(manager_group)
+            instance.groups.remove(employee_group)
+
             if not hasattr(instance, 'manager_profile'):
                 _DO_NOT_RECURSE_MANAGER_SAVE = True
                 Manager.objects.create(user=instance)
                 _DO_NOT_RECURSE_MANAGER_SAVE = False
                 print(f"Signal: Created Manager profile for {instance.username} (is_manager=True).")
-            
 
             if hasattr(instance, 'employee_profile'):
                 _DO_NOT_RECURSE_EMPLOYEE_SAVE = True
@@ -34,11 +41,19 @@ def create_or_update_profile_from_user(sender, instance, created, **kwargs):
                 print(f"Signal: Deleted Employee profile for {instance.username} (is_manager=True).")
         
         else:
+            instance.groups.add(employee_group)
+            instance.groups.remove(manager_group)
             if not hasattr(instance, 'employee_profile'):
                 _DO_NOT_RECURSE_EMPLOYEE_SAVE = True
                 Employee.objects.create(user=instance)
                 _DO_NOT_RECURSE_EMPLOYEE_SAVE = False
                 print(f"Signal: Created Employee profile for {instance.username} (is_manager=False).")
+
+            if hasattr(instance, 'manager_profile'):
+                _DO_NOT_RECURSE_MANAGER_SAVE = True
+                instance.manager_profile.delete()
+                _DO_NOT_RECURSE_MANAGER_SAVE = False
+                print(f"Signal: Deleted Manager profile for {instance.username} (is_manager=False).")
 
 
     finally:

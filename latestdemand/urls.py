@@ -52,8 +52,8 @@ urlpatterns = [
     path('api/manager/teams/<int:team_id>/', views.manager_team_detail_api, name='api_team_detail'),
     path('api/manager/unassigned_users/', views.manager_unassigned_users_api, name='api_unassigned_users'),
     path ('api/manager/teams/efficiency-report/', views.manager_team_efficiency_report_api, name = 'efficiency_report'),
-    path('api/manager/teams/<int:pk>/add_user/', views.manager_add_user_to_team_api, name='add-user-to-team'),
-    path('api/manager/teams/<int:pk>/remove_user/', views.manager_remove_user_from_team_api, name='remove-user-from-team'),
+    path('api/manager/teams/<int:team_id>/add_user/', views.manager_add_user_to_team_api, name='add-user-to-team'),
+    path('api/manager/teams/<int:team_id>/remove_user/', views.manager_remove_user_from_team_api, name='remove-user-from-team'),
 
     # manager - approvals page - APIs
     path('api/approvals/capacity/<int:request_id>/approve/', views.approve_capacity_request_api, name='approve_capacity_request_api'),
@@ -62,7 +62,7 @@ urlpatterns = [
     path('api/approvals/demand/<int:request_id>/reject/', views.reject_demand_edit_request_api, name='reject_demand_edit_request_api'),
 
     #manager - demands page - APIs
-    path ('api/demands/create/', views.create_demand_api, name = 'manage_demand_api'),
+    path ('api/demands/', views.manage_demand_api, name = 'manage_demand_api'),
     path('api/demands/<int:demand_id>/', views.manage_demand_api, name='manage_demand_api'),
     path('api/demands/delete/<int:demand_id>/', views.delete_demand_api, name='delete_demand_api'), 
     path('api/get_teams_meeting_deadline/', views.get_teams_meeting_deadline, name='get_teams_meeting_deadline'),
