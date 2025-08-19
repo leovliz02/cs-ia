@@ -293,8 +293,8 @@ class Demand (models.Model):
         ('finished', 'Finished'),
     ]
     allocation_mode_choices = [
-        ('Urgent', 'Urgent'),
-        ('Regular', 'Regular')
+        ('squeeze', 'squeeze'),
+        ('even', 'even')
     ]
 
     demandID = models.AutoField(primary_key = True)
@@ -307,7 +307,7 @@ class Demand (models.Model):
     estimated_end_date = models.DateField(null=True, blank=True)
     actual_end_date = models.DateField(null=True, blank = True)
 
-    allocation_mode = models.CharField(max_length=10, choices=allocation_mode_choices, default='Regular')
+    allocation_mode = models.CharField(max_length=10, choices=allocation_mode_choices, default='even')
 
     def __str__ (self):
         return self.demand_name

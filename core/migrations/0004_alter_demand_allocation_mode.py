@@ -14,11 +14,10 @@ class Migration(migrations.Migration):
             name="allocation_mode",
             field=models.CharField(
                 choices=[
-                    ("Urgent", "Urgent"),
-                    ("Even", "even"),
-                    ("Regular", "Regular"),
+                    ("squeeze", "squeeze"),
+                    ("even", "even")
                 ],
-                default="Regular",
+                default="even",
                 max_length=10,
             ),
         ),

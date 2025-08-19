@@ -46,8 +46,8 @@ class Migration(migrations.Migration):
                 (
                     "allocation_mode",
                     models.CharField(
-                        choices=[("Urgent", "Urgent"), ("Regular", "Regular")],
-                        default="Regular",
+                        choices=[("squeeze", "squeeze"), ("even", "even")],
+                        default="even",
                         max_length=10,
                     ),
                 ),

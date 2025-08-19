@@ -51,7 +51,7 @@ urlpatterns = [
     path("api/manager/teams/", views.manager_teams_api, name='api_teams'),
     path('api/manager/teams/<int:team_id>/', views.manager_team_detail_api, name='api_team_detail'),
     path('api/manager/unassigned_users/', views.manager_unassigned_users_api, name='api_unassigned_users'),
-    path ('api/manager/teams/efficiency-report/', views.manager_team_efficiency_report_api, name = 'efficiency_report'),
+    path('api/manager/teams/efficiency-report/', views.manager_team_efficiency_report_api, name = 'efficiency_report'),
     path('api/manager/teams/<int:team_id>/add_user/', views.manager_add_user_to_team_api, name='add-user-to-team'),
     path('api/manager/teams/<int:team_id>/remove_user/', views.manager_remove_user_from_team_api, name='remove-user-from-team'),
 

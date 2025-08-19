@@ -166,7 +166,8 @@ def employee_personal_details_view (request):
             'daily_overrides': [], 
         }
 
-        notifications = Notifications.objects.filter(employee=employee_profile).order_by('-is_read', '-timestamp')
+        #notifications = Notifications.objects.filter(employee=employee_profile).order_by('-is_read', '-timestamp')
+        notifications = Notifications.objects.filter(employee=employee_profile).order_by( 'timestamp')
 
         serialized_notifications = []
         for notif in notifications:
@@ -627,7 +628,7 @@ def manage_demand_api(request, demand_id=None):
             "start_date": demand.start_date.isoformat() if demand.start_date else None,
             "time_needed": demand.time_needed,
             "team_id": demand.team_id if demand.team else None,
-            "allocation_mode": demand.allocation_mode if demand.team else "NA",
+            "allocation_mode": demand.allocation_mode, # if demand.team else "NA"
             "predicted_end_date": demand.estimated_end_date.isoformat() if demand.estimated_end_date else None,
             "actual_end_date": demand.actual_end_date.isoformat() if demand.actual_end_date else None,
             "demand_completion_status": demand.demand_completion_status

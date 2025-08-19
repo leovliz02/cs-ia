@@ -13,8 +13,8 @@ class Migration(migrations.Migration):
             model_name="demand",
             name="allocation_mode",
             field=models.CharField(
-                choices=[("Urgent", "Urgent"), ("Regular", "Regular")],
-                default="Regular",
+                choices=[("squeeze", "squeeze"), ("even", "even")],
+                default="even",
                 max_length=10,
             ),
         ),
