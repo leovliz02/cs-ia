@@ -11,6 +11,102 @@
 </head>
 
 <body>
+  <style>
+      .popup-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+  }
+
+  .popup {
+      background-color: #fff;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      max-width: 450px;
+      width: 90%;
+      text-align: left;
+      position: relative;
+  }
+
+  .popup h2 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+  }
+
+  .popup label {
+      display: block;
+      margin-top: 0.8rem;
+      font-weight: 500;
+  }
+
+  .popup input, 
+  .popup select {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.3rem;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+  }
+
+  .popup .buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 1.5rem;
+  }
+
+  .popup .buttons button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+  }
+
+  .popup .buttons button.save {
+      background-color: #007bff;
+      color: white;
+  }
+
+  .popup .buttons button.cancel {
+      background-color: #bbbbbb;
+      color: black;
+  }
+
+  .popup .buttons button.search-another {
+      background-color: #579c30;
+      color: white;
+  }
+
+  .popup ul#demandSuggestions {
+      list-style: none;
+      padding: 0;
+      margin-top: 0.5rem;
+      border: 1px solid #ccc;
+      max-height: 150px;
+      overflow-y: auto;
+      border-radius: 4px;
+  }
+
+  .popup ul#demandSuggestions li {
+      padding: 0.5rem;
+      cursor: pointer;
+  }
+
+  .popup ul#demandSuggestions li:hover {
+      background-color: #f0f0f0;
+  }
+
+  </style>
+
   <header>
       <center><h1>Team Member Portal</h1></center>
       <a href="{% url 'logout' %}" class="logout-link">Logout</a>
@@ -176,18 +272,21 @@
     // search bar logic
     function filterDemands() {
       const query = mainSearchInput.value.toLowerCase();
+
       if (!query) {
-        displayedDemands = [...allDemands]; // If query is empty, show all demands
+        displayedDemands = [...allDemands];
       } else {
         displayedDemands = allDemands.filter(d =>
-          String(d.demand_name).toLowerCase().includes(query) || String(d.demandID).toLowerCase().includes(query)
+          String(d.demand_name).toLowerCase().includes(query) ||
+          String(d.demandID).toLowerCase().includes(query)
         );
       }
-      renderTable(); //populates the table based on demand name searched for
+      renderTable();
     }
 
+
     mainSearchInput.addEventListener('input', filterDemands);
-    mainFilterBtn.addEventListener('click', filterDemands); // Filter on button click
+    mainFilterBtn.addEventListener('click', filterDemands); 
 
     // edit demand popup outputs
     editBtn.onclick = () => {
@@ -251,6 +350,20 @@
       document.getElementById('predEndDate').value = formatDate(d.estimated_end_date);
       document.getElementById('actualEndDate').value = formatDate(d.actual_end_date);
       document.getElementById('timeRequired').value = d.time_needed;
+
+      // disable editing if Finished
+      const inputs = form.querySelectorAll('input, select, button.save');
+      if (d.demand_completion_status === 'Finished') {
+          inputs.forEach(el => {
+              if (!el.classList.contains('search-another') && !el.classList.contains('cancel')) {
+                  el.disabled = true;
+              }
+          });
+          alert("This demand has been completed. Editing is not allowed.");
+      } else {
+          inputs.forEach(el => el.disabled = false);
+      }
+
       form.style.display = 'block';
     }
 

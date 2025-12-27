@@ -2,3 +2,14 @@
 core/__pycache__/*.*
 core/migrations/__pycache__/*.*
 latestdemand/__pycache__/*.*
+
+core/__pycache__/models.cpython-311.pyc
+core/__pycache__/services.cpython-311.pyc
+core/__pycache__/views.cpython-311.pyc
+core/migrations/__pycache__/0001_initial.cpython-311.pyc
+core/migrations/__pycache__/0004_alter_demand_allocation_mode.cpython-311.pyc
+core/migrations/__pycache__/0005_alter_demand_allocation_mode.cpython-311.pyc
+latestdemand/__pycache__/urls.cpython-311.pyc
+compsci_ia_venv/**/*.*
+compsci_ia_venv/lib/python3.11/site-packages/pip/_internal/*.*.*
+compsci_ia_venv/lib/python3.11/site-packages/pip/__pycache__/*.*

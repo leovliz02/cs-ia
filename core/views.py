@@ -1,17 +1,17 @@
 # core/views.py
-from datetime import date, datetime
-from django.forms import ValidationError
+from datetime import datetime
 from django.utils import timezone
 import json
 from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib.auth.decorators import login_required 
-from django.db.models import Sum
+from django.db.models import Sum, Case, When, Value, IntegerField
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods, require_POST, require_GET
 from .models import Demand
 from functools import wraps
+from core.services import get_teams_meeting_deadline_helper
 
 from core.models import Capacity, CapacityChangeRequest, Demand, DemandDailyAllocation, DemandEditRequest, Manager, Employee, Notifications, Team
 
@@ -57,11 +57,10 @@ def login_view(request):
                 password = data.get("password")
                 print(f"Attempting login for username: {username}") 
             except (json.JSONDecodeError, AttributeError):
-                print("Invalid JSON received during login.") # DEBUG: Log invalid JSON
+                print("Invalid JSON received during login.") 
                 return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
-
+            
             user = authenticate(request, username=username, password=password)
-            user = User.objects.get(username=username)
 
             if user is not None:
                 login(request, user) 
@@ -166,18 +165,11 @@ def employee_personal_details_view (request):
             'daily_overrides': [], 
         }
 
-        #notifications = Notifications.objects.filter(employee=employee_profile).order_by('-is_read', '-timestamp')
-        notifications = Notifications.objects.filter(employee=employee_profile).order_by( 'timestamp')
 
-        serialized_notifications = []
-        for notif in notifications:
-            serialized_notifications.append({
-                'notification_ID': notif.notification_ID,
-                'notification_message': notif.notification_message,
-                'is_read': notif.is_read,
-                'created_at': notif.timestamp 
-            })
-        employee_data['notifications'] = serialized_notifications
+        notifications = Notifications.objects.filter(employee=employee_profile) \
+    .order_by('is_read', '-timestamp')
+
+        employee_data['notifications'] = notifications
 
         context = {
             'employee_data': employee_data,
@@ -327,6 +319,8 @@ def employee_commitments_view(request):
             'time': float(allocation['total_allocated_hours']) 
         })
 
+    print (demand_allocations_list)
+
     context = {
         'team_bau_time': employee_effective_capacity, 
         'demand_allocations_json': json.dumps(demand_allocations_list),
@@ -361,8 +355,8 @@ def manager_teams_page(request):
 User = get_user_model()
 
 @manager_required
-@require_http_methods(["GET", "POST"])
-def manager_teams_api(request):
+@require_http_methods(["GET", "POST", "PUT"])
+def manager_teams_api(request, team_id=None):
     if request.method == "GET":
         teams = Team.objects.all().order_by('team_name')
         teams_data = []
@@ -381,9 +375,44 @@ def manager_teams_api(request):
                 'members': members_data
             })
         return JsonResponse(teams_data, safe = False)
+    elif request.method == "POST":
+        if Team.objects.count() >= 12:
+            return JsonResponse(
+            {"error": "Maximum of 12 teams allowed."},
+            status=400
+            )
+        try:
+            data = json.loads(request.body)
+            team_name = data.get("name")
+            if not team_name:
+                return JsonResponse({"error": "team_name is required"}, status=400)
+            
+            team = Team.objects.create(team_name=team_name)
+            return JsonResponse({
+                "id": team.team_ID,
+                "name": team.team_name,
+                "members": []
+            }, status=201)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
         
+    elif request.method == "PUT":
+        data = json.loads(request.body)
+        team_name = data.get("team_name")
+        if not team_name:
+            return JsonResponse({"error": "Team name is required"}, status=400)
+        try:
+            team = Team.objects.get(team_ID=team_id)
+        except Team.DoesNotExist:
+            return JsonResponse({"error": "Team not found"}, status=404)
+        if team.team_name != team_name:
+            team.team_name = team_name
+            team.save()
+        return JsonResponse({"id": team.team_ID, "name": team.team_name})   
+    
 @manager_required
 def manager_team_detail_api(request, team_id):
+    print("HIT manager_team_detail_api")
     team = get_object_or_404(Team, team_ID=team_id)
 
     if request.method == "GET":
@@ -436,8 +465,6 @@ def manager_unassigned_users_api(request):
                     'last_name': employee.user.last_name,
                     'username': employee.user.username
                 })
-        #users = User.objects.get(employee_profile__team is null)
-    
     return JsonResponse({'unassigned_users': employee_data})
 
 @manager_required
@@ -450,6 +477,15 @@ def manager_add_user_to_team_api(request, team_id):
         print(emp_id)
         if not emp_id:
             return JsonResponse({'success': False, 'message': 'User ID is required.'}, status=400)
+        
+        if team.members.count() >= 6:
+            return JsonResponse(
+                {
+                    'success': False,
+                    'message': f'Team {team.team_name} already has a member.'
+                },
+                status=400
+            )
 
         employee = get_object_or_404(Employee, employee_ID=emp_id)
         print(employee.team)
@@ -457,39 +493,11 @@ def manager_add_user_to_team_api(request, team_id):
         if employee.team:
             return JsonResponse({'success': False, 'message': f'User {employee.user.username} already in team {employee.team.team_name}.'}, status=400)
         
-        #if Team.members.count >6:
-        #    return JsonResponse({'success': False, 'message': f'Team {Team.team_name} already has the maximum of six members.'}, status=400)
-
         employee.team = team
         employee.save()
         #Notifications.objects.create(notification_message=f"You have been added to Team {Team.team_name}.", employee=employee.user)
 
         return JsonResponse({'success': True, 'message': f'User {employee.user.username} added to {team.team_name}.'})
-    except Exception as e:
-        return JsonResponse({'success': False, 'message': str(e)}, status=500)
-
-
-@manager_required
-@require_POST
-def manager_remove_user_from_team_api(request, team_id):
-    team = get_object_or_404(Team, team_ID=team_id)
-    try:
-        data = json.loads(request.body)
-        emp_id = data.get('emp_id')
-        if not emp_id:
-            return JsonResponse({'success': False, 'message': 'User ID is required.'}, status=400)
-
-        employee = get_object_or_404(Employee, employee_ID=emp_id)
-
-        if employee.team != team:
-            return JsonResponse({'success': False, 'message': 'User not in this team.'}, status=400)
-
-        employee.team = None
-        employee.save()
-        print(f"Employee {employee.user.get_full_name()} removed from Team {Team.team_name}.")
-        #Notifications.objects.create(notification_message=f"You have been removed from Team {Team.team_name}.", employee=employee.user)
-        
-        return JsonResponse({'success': True, 'message': f'User {employee.user.username} removed from {team.team_name}.'})
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
     
@@ -498,13 +506,14 @@ def manager_remove_user_from_team_api(request, team_id):
 @manager_required
 @require_http_methods(["GET"])
 def manager_team_efficiency_report_api(request):
-    teams = Team.objects.all().order_by('team_name')
+    teams = Team.objects.all()
     report_data = []
 
     for team in teams:
         overdue = team.overdue_demands
         early = team.early_completion
         on_time = team.on_time_completions
+        print (overdue, early, on_time)
         
         total_completed_demands = overdue + early + on_time
 
@@ -524,24 +533,36 @@ def manager_team_efficiency_report_api(request):
             'efficiency_rating': efficiency_rating
         })
 
+        report_data = sorted(report_data, key=lambda x: x['efficiency_rating'], reverse=True)
+
     return JsonResponse({'teams': report_data}) 
     
 
 def manager_demands_page(request):
     demands = Demand.objects.all().select_related('team').order_by('start_date')
+    for demand in demands:
+        demand.update_demand_status()
     teams = Team.objects.all().order_by('team_name')
 
-    selected_team_id = request.GET.get('team_id')
+    selected_team_id = request.GET.get("team_ID", "")
     selected_assignment_status = request.GET.get('assignment_status')
 
     if selected_team_id:
         demands = demands.filter(team__team_ID=selected_team_id)
 
+    demands = demands.annotate(
+    is_finished=Case(
+        When(demand_completion_status="Finished", then=Value(1)),
+        default=Value(0),
+        output_field=IntegerField()
+    )
+).order_by("is_finished", "-start_date")
+
     if selected_assignment_status:
         if selected_assignment_status == 'assigned':
-            demands = demands.exclude(team__isnull=True)  # Has a team assigned
+            demands = demands.exclude(team__isnull=True) 
         elif selected_assignment_status == 'unassigned':
-            demands = demands.filter(team__isnull=True)  # No team assigned
+            demands = demands.filter(team__isnull=True)  
 
     context = {
         'demands': demands,
@@ -552,83 +573,21 @@ def manager_demands_page(request):
     return render(request, 'manager/all_demands.html', context)
 
 # demands page -> APIs
-    # create demand API
-@manager_required
-@require_http_methods(["POST"])
-def create_demand_api(request):
-    try:
-        data = json.loads(request.body)
-        demand_name = data.get('demand_name')
-        time_needed = data.get('time_needed')
-        preferred_end_date = data.get('preferred_end_date')  
-        allocation_mode = data.get('allocation_mode', False)
-        team_name = data.get('team_name')
-        start_date = data.get('start_date')
-
-        if (team_name):
-            team = Team.objects.filter (
-            team_name=team_name
-            )
-        else:
-            team = None
-
-        if not demand_name or estimated_time is None or not start_date:
-            return JsonResponse({'success': False, 'message': 'Missing required fields.'}, status=400)
-
-        try:
-            estimated_time = int(estimated_time)
-        except ValueError:
-            return JsonResponse({'success': False, 'message': 'Estimated time must be an integer.'}, status=400)
-        
-        demand = Demand.objects.create(
-                    demand_name=demand_name,
-                    time_needed=time_needed,
-                    allocation_mode=allocation_mode,
-                )
-        
-        if (allocation_mode == 'even'):
-            if (team_name):
-                team = Team.objects.filter (
-                    team_name=team_name
-                )       
-
-                demand.set_assigned_team(demand, team.team_id, time_needed, start_date)
-
-            else:
-                ValueError ("Team not entered")
-
-        elif (allocation_mode == 'squeeze'):
-            if preferred_end_date:
-                estimated_end_date = parse_date(estimated_end_date)
-                
-            else:
-                ValueError ("Estimated end date not entered")
-
-        elif (allocation_mode == 'NA'):
-            demand = Demand.objects.create(
-                    demand_name=demand_name,
-                    time_needed=time_needed,
-                    start_date=start_date
-                )
-
-
-        return JsonResponse({'success': True, 'message': 'Demand created successfully.', 'demand_id': demand.pk})
-
-    except Exception as e:
-        return JsonResponse({'success': False, 'message': str(e)}, status=500)
-
     #create/edit demand
 @manager_required
 @require_http_methods(["POST", "PUT", "GET"])
 def manage_demand_api(request, demand_id=None):
+    print("Received request:", request.method, request.body)
+    team_id = request.GET.get("team_id")
+
     if request.method == "GET":
         demand = get_object_or_404(Demand, demandID=demand_id)
+        demand.update_demand_status()
         return JsonResponse({
             "demand_name": demand.demand_name,
             "start_date": demand.start_date.isoformat() if demand.start_date else None,
             "time_needed": demand.time_needed,
             "team_id": demand.team_id if demand.team else None,
-            "allocation_mode": demand.allocation_mode, # if demand.team else "NA"
             "predicted_end_date": demand.estimated_end_date.isoformat() if demand.estimated_end_date else None,
             "actual_end_date": demand.actual_end_date.isoformat() if demand.actual_end_date else None,
             "demand_completion_status": demand.demand_completion_status
@@ -637,85 +596,91 @@ def manage_demand_api(request, demand_id=None):
     try:
         data = json.loads(request.body)
         name = data.get("demand_name")
-        start_date = parse_date(data.get("start_date"))
+        start_date = datetime.strptime(data.get("start_date"), "%Y-%m-%d").date()
         hours = float(data.get("time_needed"))
-        team_id = data.get("team_id") if (data.get ("team_id")) else None
-        allocation_mode = data.get("allocation_mode")
-        predicted_end_date = parse_date(data.get("predicted_end_date")) if data.get("predicted_end_date") else None
+        team_id = int(data.get("team_ID")) if data.get("team_ID") else None
         status = data.get("demand_completion_status")
-        print('Allocation mode is ',allocation_mode)
-        try:
-            if predicted_end_date is not None:
-                datetime(predicted_end_date, "%Y-%m-%d").date()
-            #datetime(start_date, "%Y-%m-%d")
-        except ValueError:
-            return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)
+
+        print("RAW BODY:", request.body)
+        data = json.loads(request.body)
+        print("PARSED DATA:", data)
 
         print('input validation completed')
+
         if request.method == "POST":
             print('preparing to insert demand')
             demand = Demand.objects.create(
                 demand_name=name,
                 start_date=start_date,
                 time_needed=hours,
-                demand_completion_status=status if status else "pending",
-                allocation_mode=allocation_mode
             )
+            demand.update_demand_status(new_status=status if status else None)
             print('successfully created',demand)
-        else:
+            return JsonResponse(
+                {
+                    "message": f"Demand '{demand.demand_name}' created successfully.",
+                    "demand_id": demand.demandID,
+                    "predicted_end_date": demand.estimated_end_date.isoformat()
+                    if demand.estimated_end_date else None
+                },
+                status=201
+            )
+        elif request.method == "PUT":
             print('preparing to update demand')
             demand = get_object_or_404(Demand, demandID=demand_id)
             demand.demand_name = name
-            demand.start_date = start_date
-            demand.time_needed = hours
-            demand.demand_completion_status = status if status else "pending"
 
-        demand.clear_previous_allocations()
+            demand.update_demand_status(new_status=status if status else None)
 
-        print('going to compute end date')
-        if team_id:
-            if allocation_mode == "even":
-                demand.set_assigned_team(team_id=int(team_id), hours_predicted=hours, start_date=start_date)
-            else:
-                if not predicted_end_date:
-                    return JsonResponse({"error": "Desired end date required for urgent allocation."}, status=400)
+            print('going to compute end date')
+            if team_id: 
+                demand.set_assigned_team(team_id=team_id, hours_predicted=hours, start_date=start_date)
 
-                matching_teams = demand.get_teams_meeting_deadline(
-                    predicted_end_date=predicted_end_date,
-                    proposed_start_date=start_date,
-                    hours_predicted=hours
-                )
-
-                if not matching_teams:
-                    # fallback to assign the selected team normally
-                    demand.set_assigned_team(team_id=team_id, hours_predicted=hours, start_date=start_date)
-                elif any(t.team_id == team_id for t in matching_teams):
-                    demand.set_assigned_team(team_id=team_id, hours_predicted=hours, start_date=start_date)
-                else:
-                    return JsonResponse({"error": "Selected team cannot meet the deadline."}, status=400)
-        print('going to save demand')
-        demand.save()
-        return JsonResponse({"message": f"Demand '{demand.demand_name}' saved successfully."})
+            print('going to save demand')
+            demand.save()
+            return JsonResponse({"message": f"Demand '{demand.demand_name}' saved successfully."})
+    
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
     
 
     # to get list of teams that meet deadline
-def get_teams_meeting_deadline(request):
+
+@require_http_methods(["POST"])
+def get_teams_meeting_deadline_api(request):
     data = json.loads(request.body)
-    predicted_end = data.get('predicted_end')
-    start_date = data.get('start_date')
-    time_required = data.get('time_required')
+    print ("hi", data)
+    predicted_end = datetime.strptime(data.get("predicted_end"), "%Y-%m-%d").date()
+    print ("hello", predicted_end)
+    start_date = datetime.strptime(data.get("start_date"), "%Y-%m-%d").date()
+    print ("hey", start_date)
+    time_required = float(data.get('time_required'))
+    print ("yo", time_required)
 
     if not all([predicted_end, start_date, time_required]):
+        print ("missing data")
         return JsonResponse({'error': 'Missing data for deadline check'}, status=400)
     
-    available_teams = get_teams_meeting_deadline(predicted_end, start_date, time_required)
-    if available_teams == None:
-        return JsonResponse(Team.objects.all(), safe=False)
-    else: 
-        return JsonResponse(available_teams)
+    available_teams = get_teams_meeting_deadline_helper(predicted_end, start_date, time_required)
+    if available_teams:
+        return JsonResponse({
+            "deadline_met": True,
+            "teams": [
+                {
+                    "team_ID": team.team_ID,
+                    "team_name": team.team_name
+                }
+                for team in available_teams
+            ]
+        })
+
+    return JsonResponse({
+        "deadline_met": False,
+        "teams": list(
+            Team.objects.values("team_ID", "team_name")
+        )
+    })
 
 
     
@@ -765,7 +730,7 @@ def manager_approvals_page(request):
         approvals_data.append({
             'id': req.id,
             'type': 'demand_edit',
-            'description': f"Demand '{req.demand.demand_name}' edit request: New Name='{req.new_name}', New Status='{'Finished' if req.new_status else 'Not Finished'}'.",
+            'description': f"Demand {req.demand.demand_name} with status {req.new_status} to be updated to Demand {req.new_name} with status {req.new_status}.",
             'request_id': req.id,
         })
     

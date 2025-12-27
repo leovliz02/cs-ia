@@ -95,58 +95,37 @@
 
   <script>
     // data passed from django
-    const teamBAUTime = {{ team_bau_time|default:0 }}; // This is the employee's effective daily capacity for today
+    const teamBAUTime = {{ team_bau_time|default:0 }}; 
     const demandAllocations = JSON.parse('{{ demand_allocations_json|escapejs }}');
-
-    console.log("Team BAU Time (Employee's Capacity for today):", teamBAUTime);
-    console.log("Demand Allocations for Team Today:", demandAllocations);
-
-    let chartLabels = [];
-    let chartData = [];
+    let chartLabels = [], chartData = [], chartColors = [];
     let totalAllocatedTime = 0;
 
-    demandAllocations.forEach(allocation => {
-      chartLabels.push(allocation.label);
-      chartData.push(allocation.time);
-      totalAllocatedTime += allocation.time;
-    });
+    if (demandAllocations.length === 0) {
+        chartLabels.push("No Demands");
+        chartData.push(teamBAUTime > 0 ? teamBAUTime : 1);
+        chartColors.push(teamBAUTime > 0 ? "#4BC0C0" : "#C9CBCF");
+    } else {
+        demandAllocations.forEach((allocation, i) => {
+            chartLabels.push(allocation.label);
+            chartData.push(allocation.time);
+            chartColors.push(["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0"][i % 4]);
+            totalAllocatedTime += allocation.time;
+        });
 
-    const remainingCapacity = Math.max(teamBAUTime - totalAllocatedTime, 0);
-
-    console.log("Total Allocated Time:", totalAllocatedTime);
-    console.log("Remaining Capacity for Employee:", remainingCapacity);
-
-    // actual pie chart information
-    if (remainingCapacity > 0) {
-      chartLabels.push("Available for BAU");
-      chartData.push(remainingCapacity);
-    } else if (teamBAUTime === 0) {
-        chartLabels.push("No Capacity Set");
-        chartData.push(1); // Small value to make segment visible
-    } else if (totalAllocatedTime > teamBAUTime) {
-        // If overbooked, the 'Overbooked' slice represents the excess amount
-        chartLabels.push("Overbooked");
-        chartData.push(totalAllocatedTime - teamBAUTime);
-    } else { // totalAllocatedTime === teamBAUTime and not overbooked
-        chartLabels.push("All Capacity Utilized");
-        chartData.push(0.01); // Small value to make segment visible
-    }
-
-
-    // dynamic colors for demands - maximum number of demands a team can have at a time is 4, plus extra colors for remaining capacity, overbooked, fully utilised and no capacity
-    const demandColors = [
-        "#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9900", "#C9CBCF", "#7B68EE"
-    ];
-    let chartColors = demandAllocations.map((_, index) => demandColors[index % demandColors.length]);
-
-    if (remainingCapacity > 0) {
-        chartColors.push("#4BC0C0"); // Greenish for available
-    } else if (teamBAUTime === 0) {
-        chartColors.push("#C9CBCF"); // Grey for no capacity
-    } else if (totalAllocatedTime > teamBAUTime) {
-        chartColors.push("#FF0000"); // Red for overbooked
-    } else { // All capacity utilized
-        chartColors.push("#6A5ACD"); // Purple for fully utilized
+        const remainingCapacity = Math.max(teamBAUTime - totalAllocatedTime, 0);
+        if (remainingCapacity > 0) {
+            chartLabels.push("Available for BAU");
+            chartData.push(remainingCapacity);
+            chartColors.push("#4BC0C0");
+        } else if (totalAllocatedTime > teamBAUTime) {
+            chartLabels.push("Overbooked");
+            chartData.push(totalAllocatedTime - teamBAUTime);
+            chartColors.push("#FF0000");
+        } else {
+            chartLabels.push("All Capacity Utilized");
+            chartData.push(0.01);
+            chartColors.push("#6A5ACD");
+        }
     }
 
 

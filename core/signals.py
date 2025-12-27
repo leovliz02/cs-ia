@@ -14,6 +14,9 @@ def create_or_update_profile_from_user(sender, instance, created, **kwargs):
     if _DO_NOT_RECURSE_USER_SAVE:
         return
 
+    if instance.is_superuser:
+        return
+
     _DO_NOT_RECURSE_USER_SAVE = True
     try:
 

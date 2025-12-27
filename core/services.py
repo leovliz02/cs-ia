@@ -71,14 +71,8 @@ def change_employee_capacity_for_range(employee_id, target_start_date, target_en
         print(f"Note: Employee '{employee.user.first_name()}' is not assigned to a team. Team capacity will not be updated.")
 
 
-def get_teams_meeting_deadline(desired_end_date, proposed_start_date, hours_predicted):
-        from .models import Demand, Team
-
-        dummy_demand = Demand.objects.create (
-            demand_name = "sample demand",
-            start_date = proposed_start_date,
-            hours_needed = hours_predicted
-        )
+def get_teams_meeting_deadline_helper(desired_end_date, proposed_start_date, hours_predicted):
+        from core.models import Team, Demand
 
         if not isinstance(desired_end_date, date):
             raise TypeError("desired_end_date must be a datetime.date object.")
@@ -86,26 +80,47 @@ def get_teams_meeting_deadline(desired_end_date, proposed_start_date, hours_pred
             raise TypeError("proposed_start_date must be a datetime.date object.")
         if not isinstance(hours_predicted, (int, float)) or hours_predicted < 0:
             raise ValueError("hours_predicted must be a non-negative number.")
-
         if proposed_start_date > desired_end_date:
             raise ValueError("proposed_start_date cannot be after desired_end_date.")
 
         suitable_teams = []
-        all_teams = Team.objects.all()
 
-        for team in all_teams:
-            simulated_end_date = dummy_demand.simulate_demand_allocation(
+        for team in Team.objects.all():
+            simulated_end_date = simulate_demand_allocation(
                 team,
                 hours_predicted,
                 proposed_start_date
             )
 
             if simulated_end_date and simulated_end_date <= desired_end_date:
-                suitable_teams.append(team, 0)
-            elif simulated_end_date>desired_end_date:
-                suitable_teams = None
-                
-        
-        dummy_demand.delete()
+                suitable_teams.append(team)
+                continue 
 
         return suitable_teams
+
+def simulate_demand_allocation(team, total_hours, start_date):
+        if total_hours <= 0:
+            return start_date
+
+        remaining_hours_to_allocate = total_hours
+        current_simulated_date = start_date
+        #ever_had_capacity = False
+
+        MAX_SIMULATION_DAYS = 30 
+        days_simulated = 0
+
+        while remaining_hours_to_allocate > 0 and days_simulated < MAX_SIMULATION_DAYS:
+            available_capacity_today = team.get_free_time_on(current_simulated_date)
+
+            hours_to_allocate_today = 0.0
+            
+            if available_capacity_today > 0:
+                #ever_had_capacity = True
+                hours_to_allocate_today = min(remaining_hours_to_allocate, available_capacity_today)
+
+            remaining_hours_to_allocate -= hours_to_allocate_today
+            current_simulated_date += timedelta(days=1)
+            days_simulated += 1
+        
+
+        return current_simulated_date - timedelta(days=1)  

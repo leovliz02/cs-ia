@@ -5,19 +5,10 @@ from django.db import models, transaction
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.models import Sum
-from core.services import get_team_total_capacity_for_date_helper, get_hours_allocated_for_date_helper, change_employee_capacity_for_range
+from core.services import get_team_total_capacity_for_date_helper, get_hours_allocated_for_date_helper, change_employee_capacity_for_range, simulate_demand_allocation
 
-class TeamDailySchedule(models.Model):
-    team = models.ForeignKey("Team", on_delete=models.CASCADE, related_name='daily_schedules')
-    date = models.DateField()
-    hours_allocated = models.FloatField(default=0)
-    team_capacity = models.FloatField (default = 0)
 
-    class Meta:
-        unique_together = ('team', 'date')
 
-    def __str__(self):
-        return f"Team {self.team.team_name} on {self.date}: Cap {self.team_capacity}h, Alloc {self.hours_allocated}h"
 
 class DemandDailyAllocation(models.Model):
     demand = models.ForeignKey("Demand", on_delete=models.CASCADE, related_name='daily_allocations')
@@ -81,10 +72,11 @@ class Employee (models.Model):
 
         current_date = start_date
         clash_details = False
+        
 
         while current_date <= end_date:
             employee_current_effective_capacity = Capacity.get_effective_capacity(self, current_date)
-            change_in_employee_capacity = new_capacity_for_range - employee_current_effective_capacity
+            change_in_employee_capacity =  employee_current_effective_capacity - new_capacity_for_range 
             team_current_total_capacity = get_team_total_capacity_for_date_helper(self.team, current_date)
             team_scheduled_hours = get_hours_allocated_for_date_helper(self.team, current_date)
             team_potential_new_total_capacity = team_current_total_capacity + change_in_employee_capacity
@@ -95,8 +87,14 @@ class Employee (models.Model):
             current_date += timedelta(days=1)
 
         if clash_details:
-            clash_message = "Cannot fulfill - Would cause clash with scheduled demands."
-            raise ValueError(clash_message)
+            if new_capacity_for_range > 8.0:
+                clash_message = "Cannot fulfill - Consider requesting a capacity below 8 hours."
+            else:
+                if new_capacity_for_range < 0:
+                    clash_message = "Cannot fulfill - Capacity must be positive."
+                else:
+                    clash_message = "Cannot fulfill - Would cause clash with scheduled demands."
+                    raise ValueError(clash_message)
 
         request = CapacityChangeRequest.objects.create(
             employee=self,
@@ -106,7 +104,7 @@ class Employee (models.Model):
             status='Pending'
         )
         print(f"Capacity change request for {self.user.get_full_name()} from {start_date} to {end_date} (new cap: {new_capacity_for_range} hrs) sent successfully. Request ID: {request.pk}")
-
+    
     def send_demand_edit_request(self, demand, new_name, new_status):
         if not (new_name or new_status):
             raise ValueError("Either new_name or new_status must be provided for a demand edit request.")
@@ -123,6 +121,25 @@ class Employee (models.Model):
         )
         print(f"Demand edit request for Demand ID {demand.demandID} sent by {self.user.get_full_name()}.")
 
+class TeamDailySchedule(models.Model):
+    team = models.ForeignKey("Team", on_delete=models.CASCADE, related_name='daily_schedules')
+    date = models.DateField()
+    hours_allocated = models.FloatField(default=0)
+    @property
+    def team_capacity(self):
+        return (
+            Capacity.objects
+            .filter(employee__team=self.team, date=self.date)
+            .aggregate(total=Sum("capacity_hours"))["total"]
+            or 0.0
+        )
+
+    class Meta:
+        unique_together = ('team', 'date')
+
+    def __str__(self):
+        return f"Team {self.team.team_name} on {self.date}: Cap {self.team_capacity}h, Alloc {self.hours_allocated}h"
+    
 class Team (models.Model):
     team_ID = models.AutoField(primary_key=True)
     manager = models.ForeignKey("Manager", on_delete=models.SET_NULL, null=True, related_name='teams_managed')
@@ -147,40 +164,51 @@ class Team (models.Model):
             date=target_date
         ).aggregate(Sum('capacity_hours'))['capacity_hours__sum'] or 0.0
 
-        daily_schedule=TeamDailySchedule.objects.get_or_create(
+        daily_schedule, _ =TeamDailySchedule.objects.get_or_create(
             team=self,
             date=target_date,
-            defaults={'team_capacity': 0, 'hours_allocated': 0}
+            defaults={'hours_allocated': 0}
         )
-        daily_schedule.team_capacity = total_employee_capacity
-        daily_schedule.save()
-        print(f"Team '{self.team_name}' capacity for {target_date} updated to {total_employee_capacity:.2f} hours.")
 
-    def get_free_time_on (self, target_date):
+        daily_schedule.save()
+        print(
+        f"Team '{self.team_name}' capacity for {target_date} "
+        f"updated to {total_employee_capacity:.2f} hours."
+    )
+    def get_free_time_on (self,target_date):
         try:
             schedule = self.daily_schedules.get(date=target_date)
             team_capacity = schedule.team_capacity
             used_time = schedule.hours_allocated
         except TeamDailySchedule.DoesNotExist:
-            team_capacity = 0.0
+            team_capacity = self.get_member_count() * 8.0
             used_time = 0.0
 
         return max(team_capacity - used_time, 0)
 
     @transaction.atomic
     def update_team_daily_allocation_summary(self, target_date):
-        total_allocated_hours = DemandDailyAllocation.objects.filter(
-            team=self,
-            date=target_date
-        ).aggregate(
-            Sum('hours_allocated')
-        )['hours_allocated__sum'] or 0.0
+        total_allocated_hours = (
+            DemandDailyAllocation.objects
+            .filter(team=self, date=target_date)
+            .aggregate(total=Sum("hours_allocated"))["total"]
+            or 0.0
+        )
 
-        schedule, created = TeamDailySchedule.objects.get_or_create(self, date, total_allocated_hours)
+        schedule, created = TeamDailySchedule.objects.get_or_create(
+            team=self,
+            date=target_date,
+            defaults={"hours_allocated": 0.0},
+        )
 
         schedule.hours_allocated = total_allocated_hours
         schedule.save()
-        print(f"Team '{self.team_name}' daily allocation summary for {target_date} updated to {total_allocated_hours:.2f} hours.")
+
+        print(
+            f"Team '{self.team_name}' daily allocation summary "
+            f"for {target_date} updated to {total_allocated_hours:.2f} hours."
+        )
+
 
 class Manager(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='manager_profile')
@@ -288,26 +316,20 @@ class Manager(models.Model):
 
 class Demand (models.Model):
     demand_completion_status_choices = [
-        ('pending', 'Pending'),
-        ('in_progress', 'In Progress'),
-        ('finished', 'Finished'),
-    ]
-    allocation_mode_choices = [
-        ('squeeze', 'squeeze'),
-        ('even', 'even')
+        ('Pending', 'Pending'),
+        ('In Progress', 'In Progress'),
+        ('Finished', 'Finished'),
     ]
 
     demandID = models.AutoField(primary_key = True)
     demand_name = models.CharField(max_length=100, null=True)
     team = models.ForeignKey (Team, on_delete=models.SET_NULL, null=True, related_name='demands')
     time_needed = models.FloatField(default=0)
-    demand_completion_status = models.CharField(max_length=20, default='pending', choices=demand_completion_status_choices)
+    demand_completion_status = models.CharField(max_length=20, default='Pending', choices=demand_completion_status_choices)
     demand_assignment_status = models.BooleanField(default=False)
     start_date = models.DateField(null=True, blank=True)
     estimated_end_date = models.DateField(null=True, blank=True)
     actual_end_date = models.DateField(null=True, blank = True)
-
-    allocation_mode = models.CharField(max_length=10, choices=allocation_mode_choices, default='even')
 
     def __str__ (self):
         return self.demand_name
@@ -315,84 +337,66 @@ class Demand (models.Model):
     def clear_previous_allocations(self):
         self.daily_allocations.all().delete()
         print(f"Cleared all daily allocations for Demand ID {self.demandID}.")
-
-    def simulate_demand_allocation(self, team_obj, total_hours, start_date):
-        if total_hours == 0:
-            return start_date
-
-        remaining_hours_to_allocate = total_hours
-        current_simulated_date = start_date
-
-        while remaining_hours_to_allocate > 0:
-
-            team_current_total_capacity = get_team_total_capacity_for_date_helper(team_obj, current_simulated_date)
-            hours_already_allocated_on_team_schedule = get_hours_allocated_for_date_helper(team_obj, current_simulated_date)
-
-            available_capacity_today = team_current_total_capacity - hours_already_allocated_on_team_schedule
-
-            hours_to_allocate_today = 0.0
-            if available_capacity_today > 0:
-                hours_to_allocate_today = min(remaining_hours_to_allocate, available_capacity_today)
-
-            remaining_hours_to_allocate -= hours_to_allocate_today
-            current_simulated_date += timedelta(days=1)
-
-        if remaining_hours_to_allocate <= 0:
-            return current_simulated_date - timedelta(days=1)    
         
-    @transaction.atomic
+    
     def set_assigned_team(self, team_id, hours_predicted, start_date):
-        if self.demand_assignment_status:
-            raise ValueError(f"Demand '{self.demand_name}' (ID: {self.demandID}) is already assigned to a team.")
-
-        if self.demand_completion_status in ['In Progress', 'Finished']:
-            raise ValueError(f"Demand '{self.demand_name}' (ID: {self.demandID}) is already {self.demand_completion_status}.")
-
+        self.clear_previous_allocations()
         if hours_predicted <= 0:
-            raise ValueError("Hours predicted for the demand must be greater than 0.")
+            raise ValueError("Hours predicted must be greater than 0.")
 
         if not isinstance(start_date, date):
             raise TypeError("start_date must be a datetime.date object.")
+        
+        target_team = Team.objects.get(team_ID=team_id)
 
-        try:
-            target_team = Team.objects.get(team_ID=team_id)
-        except Team.DoesNotExist:
-            raise ValueError(f"Team with ID '{team_id}' not found.")
-
-        simulated_end_date = self._simulate_demand_allocation(target_team, hours_predicted, start_date)
+        simulated_end_date = simulate_demand_allocation(
+            target_team, hours_predicted, start_date
+        )
         if simulated_end_date is None:
-            raise ValueError(
-                f"Team '{target_team.team_name}' does not have enough capacity to fulfill demand "
-                f"({hours_predicted:.2f} hrs) starting from {start_date.strftime('%Y-%m-%d')} "
-                f"within the maximum allowed allocation period (365 days)."
+            raise ValueError
+        (f"Team '{target_team.team_name}' cannot meet the demand within 30 days.")
+
+        remaining_hours = hours_predicted
+        current_date = start_date
+        daily_allocations = []
+
+        MAX_DAYS = 30
+        days_used = 0
+
+        print(
+            f"Allocating {hours_predicted:.2f}h for Demand '{self.demand_name}' "
+            f"to Team '{target_team.team_name}' starting {start_date}"
+        )
+
+        while remaining_hours > 0 and days_used < MAX_DAYS:
+            team_capacity = target_team.get_free_time_on(current_date)
+
+            print(
+                f"{current_date} | Capacity: {team_capacity:.2f}h | "
             )
 
-        remaining_hours_to_allocate = hours_predicted
-        current_allocation_date = start_date
-        daily_allocations_to_create = []
+            if team_capacity > 0:
+                hours_today = min(remaining_hours, team_capacity)
 
-        while remaining_hours_to_allocate > 0:
-            team_current_total_capacity = get_team_total_capacity_for_date_helper(target_team, current_allocation_date)
-            hours_already_allocated_on_team_schedule = get_hours_allocated_for_date_helper(target_team, current_allocation_date)
-
-            available_capacity_today = team_current_total_capacity - hours_already_allocated_on_team_schedule
-
-            hours_to_allocate_today = 0.0
-            if available_capacity_today > 0:
-                hours_to_allocate_today = min(remaining_hours_to_allocate, available_capacity_today)
-
-            if hours_to_allocate_today > 0:
-                daily_allocations_to_create.append(
+                daily_allocations.append(
                     DemandDailyAllocation(
                         demand=self,
                         team=target_team,
-                        date=current_allocation_date,
-                        hours_allocated=hours_to_allocate_today
+                        date=current_date,
+                        hours_allocated=hours_today
                     )
                 )
-                remaining_hours_to_allocate -= hours_to_allocate_today
+                remaining_hours -= hours_today
 
-            current_allocation_date += timedelta(days=1)
+                print(f"→ Allocated {hours_today:.2f}h")
+
+            current_date += timedelta(days=1)
+            days_used += 1
+
+        if remaining_hours > 0:
+            raise ValueError(
+                "Demand allocation stalled — insufficient team capacity within 30 days."
+            )
 
         with transaction.atomic():
             self.team = target_team
@@ -402,62 +406,98 @@ class Demand (models.Model):
             self.demand_assignment_status = True
             self.save()
 
-            DemandDailyAllocation.objects.bulk_create(daily_allocations_to_create)
+            DemandDailyAllocation.objects.bulk_create(daily_allocations)
 
-            for allocation in daily_allocations_to_create:
+            for allocation in daily_allocations:
                 target_team.update_team_daily_allocation_summary(allocation.date)
 
-        print(f"Demand '{self.demand_name}' (ID: {self.demandID}) successfully assigned to Team '{target_team.team_name}'.")
-        print(f"Allocated {hours_predicted:.2f} total hours. Estimated end date: {self.estimated_end_date.strftime('%Y-%m-%d')}.")
+        notif_message = (
+            f"Demand '{self.demand_name}' assigned to Team '{target_team.team_name}'. "
+            f"Estimated completion: {self.estimated_end_date.strftime('%Y-%m-%d')}."
+        )
+        for employee in target_team.members.all():
+            Notifications.objects.create(
+                notification_message=notif_message,
+                employee=employee
+            )
 
-        notif_message = f"Demand '{self.demand_name}' has been assigned to Team '{self.team.team_name}'. Estimated completion: {self.estimated_end_date.strftime('%Y-%m-%d')}."
-        for employee in self.team.members.all():
-            Notifications.objects.create(notification_message=notif_message, employee=employee)
+        print(
+            f"Demand '{self.demand_name}' successfully assigned "
+            f"({hours_predicted:.2f}h over {len(daily_allocations)} days)."
+        )
+
 
     @transaction.atomic
-    def update_demand_status (self, new_status):
-            if new_status not in [choice[0] for choice in self.demand_completion_status_choices]:
-                raise ValueError(f"Invalid demand status: '{new_status}'. Must be one of {[choice[0] for choice in self.DEMAND_COMPLETION_STATUS_CHOICES]}.")
+    def update_demand_status (self, new_status=None):
+            date_today = timezone.localdate()
+            if new_status not in [choice[0] for choice in self.demand_completion_status_choices] and new_status is not None:
+                raise ValueError(f"Invalid demand status: '{new_status}'. Must be one of {[choice[0] for choice in self.demand_completion_status_choices]}.")
 
             if not self.team:
-                raise PermissionError("The demand has not been assigned to a team yet. Cannot update status to In Progress or Finished.")
+                print(f"Demand '{self.demand_name}' (ID: {self.demandID}) has no assigned team. Status update skipped.")
+                return
+            elif self.demand_completion_status =='Finished':
+                return
+            else:
+                if self.demand_completion_status != 'Finished':
+                    old_status = self.demand_completion_status
 
-            old_status = self.demand_completion_status
-            self.demand_completion_status = new_status
+                    if new_status is not None:
+                        print (f"Updating Demand '{self.demand_name}' (ID: {self.demandID}) status from '{old_status}' to '{new_status}'.")
+                        self.demand_completion_status = new_status
+                        if new_status == 'In Progress':
+                            self.start_date = timezone.localdate()
+                            print(f"Start date for Demand '{self.demand_name}' (ID: {self.demandID}) set to today: {self.start_date}.") 
+                            print(f"Demand '{self.demand_name}' (ID: {self.demandID}) status updated to 'In Progress'.")
+                        elif new_status == 'Finished':
+                            self.clear_previous_allocations()
+                            self.actual_end_date = date_today
+                            print(f"Demand '{self.demand_name}' (ID: {self.demandID}) status updated to 'Finished'.")
+                            if self.estimated_end_date:
+                                delta_days = (date_today - self.estimated_end_date).days
+                                if delta_days > 0:
+                                    self.team.overdue_demands += 1
+                                    self.team.save()
+                                    message = f"Demand {self.demand_name} completed {delta_days} days overdue."
+                                    print (message)
+                                    for employee in self.team.members.all():
+                                        Notifications.objects.create(notification_message=message, employee=employee)
+                                elif delta_days < 0:
+                                    self.team.early_completion += 1
+                                    self.team.save()
+                                    message = f"Demand {self.demand_name} completed {abs(delta_days)} days early."
+                                    print (message)
+                                    for employee in self.team.members.all():
+                                        Notifications.objects.create(notification_message=message, employee=employee)
+                                else:
+                                    if delta_days == 0:
+                                        self.team.on_time_completions += 1
+                                        self.team.save()
+                                        message = f"Demand {self.demand_name} completed on time."
+                                        print (message)
+                                        for employee in self.team.members.all():
+                                            Notifications.objects.create(notification_message=message, employee=employee)
 
-            if new_status == 'Finished':
-                self.demand_assignment_status = False
-                self.actual_end_date = timezone.localdate()
+                    if date_today >= self.start_date and self.demand_completion_status!='In Progress' and new_status==None:
+                                print (f"Auto-updating Demand '{self.demand_name}' (ID: {self.demandID}) status based on dates.")
+                                self.demand_completion_status = 'In Progress'
+                                message = (f"Demand '{self.demand_name}' (ID: {self.demandID}) status auto-updated to 'In Progress' on start date.")
+                                print (message)
+                                for employee in self.team.members.all():
+                                    Notifications.objects.create(notification_message=message, employee=employee)
+                
+            
+                self.save()
+                print(f"Demand '{self.demand_name}' (ID: {self.demandID}) status updated to '{new_status}'.")
 
-                if self.estimated_end_date:
-                    delta_days = (self.actual_end_date - self.estimated_end_date).days
-                    if delta_days > 0:
-                        self.team.overdue_demands += 1
-                        print(f"Demand {self.demand_name} completed {delta_days} days overdue.")
-                    elif delta_days < 0:
-                        self.team.early_completion += 1
-                        print(f"Demand {self.demand_name} completed {abs(delta_days)} days early.")
-                    else:
-                        if delta_days == 0:
-                            self.team.on_time_completions += 1
-                            print(f"Demand {self.demand_name} completed on time.")
-                print(f"Demand '{self.demand_name}' (ID: {self.demandID}) marked as Finished.")
-
-            elif new_status == 'In Progress' and old_status == 'Pending':
-                if not self.start_date:
-                    self.start_date = timezone.localdate()
-                print(f"Demand '{self.demand_name}' (ID: {self.demandID}) status updated to 'In Progress'.")
-
-            self.save()
-            print(f"Demand '{self.demand_name}' (ID: {self.demandID}) status updated to '{new_status}'.")
-
-            message = f"Demand '{self.demand_name}' is now '{self.demand_completion_status}'."
-            for employee in self.team.members.all():
-                Notifications.objects.create(notification_message=message, employee=employee)
+                message = f"Demand '{self.demand_name}' is now '{self.demand_completion_status}'."
+                for employee in self.team.members.all():
+                    Notifications.objects.create(notification_message=message, employee=employee)
 
 class Notifications (models.Model):
     notification_ID = models.AutoField(primary_key=True)
     notification_message = models.CharField(max_length=10000)
+    is_read = models.BooleanField(default=False)
     employee = models.ForeignKey ("Employee", on_delete=models.CASCADE, related_name='notifications')
     timestamp = models.DateTimeField(auto_now_add=True)
 
@@ -488,9 +528,9 @@ class DemandEditRequest(models.Model):
     new_name = models.CharField(max_length=255, null=True, blank=True)
     new_status = models.CharField(max_length=20, choices=Demand.demand_completion_status_choices, null=True, blank=True)
     STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
+        ('Pending'),
+        ('Approved'),
+        ('Rejected'),
     ]
 
     def __str__(self):
@@ -500,7 +540,8 @@ class Capacity(models.Model):
     employee = models.ForeignKey('Employee', on_delete=models.CASCADE, related_name='daily_capacities')
     date = models.DateField()
     capacity_hours = models.FloatField(
-        validators=[MinValueValidator(0.0), MaxValueValidator(15.0)]
+        validators=[MinValueValidator(0.0), MaxValueValidator(15.0)],
+        default=8.0
     )
 
     class Meta:

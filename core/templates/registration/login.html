@@ -78,6 +78,7 @@
 </head>
 <body>
   <form id="loginForm" class="login-container">
+    {% csrf_token %}
     <h2>Login</h2>
     <div class="input-group">
       <input type="text" id="username" placeholder="Username" required />
@@ -115,6 +116,7 @@
       errorMsg.style.display = "none";
 
       fetch("/api/login/", {
+        
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -134,7 +136,7 @@
             errorMsg.style.display = "block";
           }
         } else {
-          errorMsg.textContent = data.message || "Invalid username or password.";
+          errorMsg.textContent = data.error || "Invalid username or password.";
           errorMsg.style.display = "block";
         }
       })

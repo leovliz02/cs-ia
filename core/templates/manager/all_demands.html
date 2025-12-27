@@ -6,6 +6,7 @@
   <title>All Demands – Team Manager</title>
   {% load static%}
   <link rel="stylesheet" href="{% static 'styles.css' %}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <style>
     .container {
       max-width: 1000px;
@@ -200,17 +201,17 @@
   <div class="container">
     <h2>
       All Demands
-      <button class="add-btn" onclick="openDemandPopup()">+ Add Demand</button>
+      <button class="add-btn" id="addDemandBtn">+ Add Demand</button>
     </h2>
 
     <!--filter options code-->
     <div class="filter-section">
         <form method="GET" class="filter-form">
             <label for="team_filter">Filter by Team:</label>
-            <select name="team_id" id="team_filter">
+            <select name="team_ID" id="team_filter">
                 <option value="">All Teams</option>
                 {% for team in teams %}
-                    <option value="{{ team.teamID }}" {% if team.teamID|stringformat:"s" == selected_team_id %}selected{% endif %}>{{ team.teamName }}</option>
+                    <option value="{{ team.team_ID }}" {% if team.team_ID|stringformat:"s" == selected_team_id %}selected{% endif %}>{{ team.team_name }}</option>
                 {% endfor %}
             </select>
 
@@ -221,13 +222,16 @@
                 <option value="unassigned" {% if selected_assignment_status == "unassigned" %}selected{% endif %}>Unassigned</option>
             </select>
             <button type="submit" class="filter-btn">Apply Filters</button>
+            <button type="button" class="filter-btn" onclick="clearFilters()">
+                Clear Filters
+            </button>
         </form>
     </div>
 
     <table>
       <thead>
         <tr>
-          <th>Name</th>
+          <th>Demand ID</th>
           <th>Team</th>
           <th>Start Date</th>
           <th>Predicted End</th>
@@ -245,21 +249,25 @@
           <td>{% if demand.team %}{{ demand.team.team_name }}{% else %}Unassigned{% endif %}</td>
           <td>{{ demand.start_date|date:"d/m/y" }}</td>
           <td>{% if demand.estimated_end_date %}{{ demand.estimated_end_date|date:"d/m/y" }}{% else %}N/A{% endif %}</td>
-          <td>{% if demand.actual_end_date %}{{ demand.actual_end_date|date:"d/m/y" }}{% else %}–{% endif %}</td>
-          <td>{{ demand.timeNeeded }} hrs</td>
+          <td>{% if demand.actual_end_date %}{{ demand.actual_end_date|date:"d/m/y" }}{% else %}N/A{% endif %}</td>
+          <td>{{ demand.time_needed }} hrs</td>
           <td>
-            {% if demand.demand_completion_status == "finished" %}Finished{% else %}
-                {% if demand.demand_completion_status == "in_progress" %}In Progress{% else %}
+            {% if demand.demand_completion_status == "Finished" %}Finished{% else %}
+                {% if demand.demand_completion_status == "In Progress" %}In Progress{% else %}
                     Pending
                 {% endif %}
             {% endif %}
           </td>
           <td>{% if demand.team %}Assigned{% else %}Unassigned{% endif %}</td>
           <td class="actions">
-            <button class="edit-btn" onclick="openDemandPopup('{{ demand.demandID }}')">Edit</button>
-            {% if not demand.team %} {# Show assign button only if unassigned #}
-                <button class="assign-btn" onclick="openDemandPopup('{{ demand.demandID }}')">Assign</button>
+            {% if demand.demand_completion_status != "Finished" %}
+                <button class="edit-btn" onclick="openDemandPopup('{{ demand.demandID }}', false)">Edit</button>
+
+                {% if not demand.team %}
+                    <button class="assign-btn" onclick="openDemandPopup('{{ demand.demandID }}', true)">Assign</button>
+                {% endif %}
             {% endif %}
+
             <button class="delete-btn" onclick="deleteDemand('{{ demand.demandID }}')">Delete</button>
           </td>
         </tr>
@@ -279,45 +287,33 @@
         <input type="hidden" id="demandId" name="demandID" />
 
         <label for="demandName">Demand Name:</label>
-        <input type="text" id="demandName" name="demandName" required />
+        <input type="text" id="demandName" name="demandName" required placeholder="Enter Name"/>
 
         <label for="startDate">Start Date:</label>
-        <input type="date" id="startDate" name="startDate" required />
+        <input type="date" id="startDate" name="startDate" required placeholder = "Select Start Date"/>
 
         <label for="timeRequired">Time Required (hours):</label>
-        <input type="number" id="timeRequired" name="timeRequired" min="1" required />
+        <input type="number" id="timeRequired" name="timeRequired" min="1" required placeholder = "Select Time Estimated for Demand"/>
 
-        <label for="allocationModeSelection">Allocation Mode:</label>
-        <select id="allocationModeSelection" name="allocationModeSelection">
-            <option value ="NA"> -- Select Allocation Mode -- </option>
-            <option value="even">Evenly Distributed (Can take time)</option>
-            <option value="squeeze">Squeezed (Urgent)</option>
-        </select>
-
+        <div id="preferred_end_group">
+          <label for="preferred_end_date_input">Predicted End Date:</label>
+          <input type="date" id="preferred_end_date_input" name="preferred_end" placeholder = "Select Preferred End Date"/>
+        </div>
         <div id="assignTeamContainer" style="display: none;">
           <label for="demandTeam">Assign Team:</label>
-          <select id="demandTeam" name="team_id">
-            <option value="">-- Select Team --</option>
-            {% for team in teams %}
-                <option value="{{ team.teamID }}">{{ team.team_name }}</option>
-            {% endfor %}
+          <select id="demandTeam" name="demandTeam">
           </select>
-        </div>
-
-        <div id="predictedEndDateGroup" style="display: none;">
-          <label for="predictedEndInput">Predicted End Date (for urgent requests):</label>
-          <input type="date" id="predictedEndInput" name="predicted_end" />
-        </div>
+        </div>        
 
         <label for="status">Completion Status:</label>
         <select id="status" name="status">
-          <option value="pending">Pending</option>
-          <option value="in_progress">In Progress</option>
-          <option value="finished">Finished</option>
+          <option value="Pending">Pending</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Finished">Finished</option>
         </select>
 
         <label for="actualEndReadonly">Actual End Date:</label>
-        <input type="date" id="actualEndReadonly" readonly />
+        <input type="date" id="actualEndReadonly" readonly placeholder = "N/A"/>
 
         <div id="formErrorMessage" class="error-message"></div>
 
@@ -329,7 +325,30 @@
     </div>
   </div>
 
+  <div class="popup-bg" id="confirmEndDateBg" style="display:none;">
+  <div class="popup">
+    <h3>Confirm Predicted End Date</h3>
+    <p>
+      You selected <strong id="confirmEndDateText"></strong> as the predicted end date.
+      <br><br>
+      Do you want to proceed with this deadline to find available teams?
+    </p>
+
+    <div class="popup-buttons">
+      <button class="cancel" onclick="cancelPredictedEnd()">Cancel</button>
+      <button class="save" onclick="confirmPredictedEnd()">Confirm</button>
+    </div>
+  </div>
+</div>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script>
+    let savedStartDate = null;
+    let confirmedPredictedEnd = false;
+    let pendingPredictedEnd = null;
+    let demandPopupBg, demandForm, demandPopupTitle, formErrorMessage, demand;
+    let demandNameInput, startDateInput, timeRequiredInput, demandTeamSelect;
+    let preferred_end, preferred_end_date_input, statusSelect, actualEndReadonly;
+
     let currentDemandId = null; // keeps track of which demand is being edited/assigned
 
     // cookie management for crsf token
@@ -349,73 +368,282 @@
     }
     const csrftoken = getCookie('csrftoken');
 
-    // choose allocation to show the edit function for predicted end date if even is clicked, and if its urgent/squeezed mode, its hidden.
-  function togglePredictedEndDateVisibility() {
-      const predictedEndGroup = document.getElementById("predictedEndDateGroup");
-      const assignTeamContainer = document.getElementById("assignTeamContainer");
+    
 
-      if (allocationModeSelection.value === "NA") {
-          predictedEndGroup.style.display = "none";
-          assignTeamContainer.style.display = "none";
-      }
 
-      if (allocationModeSelection.value === "even") {
-          assignTeamContainer.style.display = "block";
-      } else if (allocationModeSelection.value === "squeeze") {
-          predictedEndGroup.style.display = "block";
-      }
-  }
+    document.addEventListener("DOMContentLoaded", function () {
+    // grab all elements
+      demandPopupBg = document.getElementById('demandPopupBg'); 
+      demandForm = document.getElementById('demandForm');
+      demandPopupTitle = document.getElementById('demandPopupTitle');
+      formErrorMessage = document.getElementById('formErrorMessage');
+      demandNameInput = document.getElementById('demandName');
+      startDateInput = document.getElementById('startDate');
+      timeRequiredInput = document.getElementById('timeRequired');
+      demandTeamSelect = document.getElementById('demandTeam');
+      preferred_end = document.getElementById('preferred_end');
+      preferred_end_date_input = document.getElementById('preferred_end_date_input');
+      statusSelect = document.getElementById('status');
+      actualEndReadonly = document.getElementById('actualEndReadonly');
+      preferred_end_date_input.addEventListener("change", onPredictedEndSelected);
+
+      //calendar implicit validation
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const minStartDate = new Date(today);
+      minStartDate.setDate(minStartDate.getDate() + 1);
+
+      flatpickr("#startDate", {
+        dateFormat: "Y-m-d",
+        minDate: minStartDate,
+
+        onChange: function (selectedDates) {
+          if (selectedDates.length === 1) {
+            savedStartDate = selectedDates[0];
+            savedStartDate.setHours(0, 0, 0, 0);
+          }
+        }
+      });
+
+      flatpickr("#preferred_end_date_input", {
+        dateFormat: "Y-m-d",
+
+        onOpen: function (selectedDates, dateStr, instance) {
+          if (!savedStartDate) {
+            alert("Start date must be set before choosing an end date.");
+            instance.close();
+            return;
+          }
+
+          minEndDate = new Date(savedStartDate);
+          if (minEndDate <= today){
+            minEndDate = today
+          }
+          minEndDate.setDate(minEndDate.getDate() + 1);
+
+          instance.set("minDate", minEndDate);
+        },
+
+        onChange: function (selectedDates, dateStr, instance) {
+          const end = selectedDates[0];
+
+          if (end <= savedStartDate) {
+            alert("End date must be at least 1 day after the start date.");
+            instance.clear();
+          }
+        }
+      });
+
+
+
+
+      const addDemandBtn = document.getElementById("addDemandBtn");
+      if (addDemandBtn) addDemandBtn.addEventListener("click", () => openDemandPopup());
+      updateAddDemandButton();
+
+      if (demandForm) {
+        demandForm.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            formErrorMessage.textContent = '';
+
+            const url = currentDemandId
+                ? `${MANAGE_DEMAND_BASE_URL}${currentDemandId}/`
+                : MANAGE_DEMAND_BASE_URL;
+
+            const method = currentDemandId ? 'PUT' : 'POST';
+
+            let team_ID = demandTeamSelect.value ? parseInt(demandTeamSelect.value) : null;
+            let preferredEnd = preferred_end_date_input.value || null;
+
+            // date validation
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const startDate = new Date(startDateInput.value);
+            startDate.setHours(0, 0, 0, 0);
+
+            const minStartDate = new Date(today);
+            minStartDate.setDate(minStartDate.getDate() + 1);
+
+            if (startDate < minStartDate) {
+                formErrorMessage.textContent = "Start date must be at least tomorrow.";
+                return;
+            }
+
+            if (preferredEnd) {
+                const endDate = new Date(preferredEnd);
+                endDate.setHours(0, 0, 0, 0);
+
+                const minEndDate = new Date(document.getElementById('startDate'));
+                minEndDate.setDate(minEndDate.getDate() + 1);
+
+                if (endDate < minEndDate) {
+                    formErrorMessage.textContent =
+                        "Preferred end date must be at least 1 day after the start date.";
+                    return;
+                }
+            }
+
+
+            const formData = {
+                demand_name: demandNameInput.value,
+                start_date: new Date(startDateInput.value).toISOString().slice(0, 10),
+                time_needed: parseInt(timeRequiredInput.value),
+                team_ID: team_ID,
+                demand_completion_status: statusSelect.value,
+                preferred_end: preferredEnd
+            };
+
+
+
+            try {
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                document.querySelector(".save").disabled = true;
+                document.querySelector(".save").textContent = "Saving...";
+                const data = await response.json();
+
+
+
+                if (!response.ok) {
+                    formErrorMessage.textContent = data.error || data.message || 'Failed to save demand';
+                    document.querySelector(".save").disabled = false;
+                    document.querySelector(".save").textContent = "Save Demand";
+
+                    return;
+                }
+
+                alert(data.message || 'Demand saved successfully!');
+                location.reload();
+
+                document.querySelector(".save").disabled = false;
+                document.querySelector(".save").textContent = "Save Demand";
+
+
+          } catch (err) {
+                console.error(err);
+                formErrorMessage.textContent = 'Server communication error.';
+            }
+          });
+
+
+      
+    }})
+
+    function clearFilters() {
+        window.location.href = window.location.pathname;
+    }
+
+    const MANAGE_DEMAND_BASE_URL = "{% url 'manage_demand_api' 0 %}".replace('0/', '');
+    const url = currentDemandId ? `${MANAGE_DEMAND_BASE_URL}${currentDemandId}/` : MANAGE_DEMAND_BASE_URL;
+    const method = currentDemandId ? 'PUT' : 'POST';
 
 
 
 //edit/asisgn demand view
-async function openDemandPopup(demandId = null) {
-    //if (demandForm) demandForm.reset();
-        if (formErrorMessage) formErrorMessage.textContent = '';
-        currentDemandId = demandId;
-        if (predictedEndInput) predictedEndInput.value = '';
+async function openDemandPopup(demandId = null, isAssignMode = false) {
 
-        if (demandId) {
-            if (demandPopupTitle) demandPopupTitle.innerText = "Edit Demand";
+    confirmedPredictedEnd = false;
+    pendingPredictedEnd = null;
 
-            //if (allocationModeSelection.value !== "NA"){
-              try {
-                  const MANAGE_DEMAND_BASE_URL = "{% url 'manage_demand_api' 0 %}".replace('0/', '');
-                  const response = await fetch(`${MANAGE_DEMAND_BASE_URL}${demandId}/`);
-                  if (!response.ok) throw new Error('Failed to fetch demand data.');
+    if (demandId) {
+        demandPopupTitle.innerText = "Edit Demand";
 
-                  const demandData = await response.json();
-                  console.log('demandData',demandData)
-                  if (demandNameInput) demandNameInput.value = demandData.demand_name;
-                  if (startDateInput) startDateInput.value = demandData.start_date;
-                  if (timeRequiredInput) timeRequiredInput.value = demandData.time_needed;
-                  if (demandTeamSelect) demandTeamSelect.value = demandData.team_id || '';
-                  if (allocationModeSelection) allocationModeSelection.value = demandData.allocation_mode || 'NA'; 
-                  togglePredictedEndDateVisibility();
-                  if (predictedEndInput) predictedEndInput.value = demandData.predicted_end_date || ''; 
-                  if (actualEndReadonly) actualEndReadonly.value = demandData.actual_end_date || ''; 
-                  if (statusSelect) statusSelect.value = demandData.demand_completion_status || 'pending';
+        try {
+            const MANAGE_DEMAND_BASE_URL = "{% url 'manage_demand_api' 0 %}".replace('0/', '');
+            const response = await fetch(`${MANAGE_DEMAND_BASE_URL}${demandId}/`, {
+                method: 'GET',
+                credentials: "same-origin",     
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                }})
 
-                  if (startDateInput) startDateInput.disabled = true;
-                  if (timeRequiredInput) timeRequiredInput.disabled = true;
-              } catch (error) {
-                  console.error("Error in openDemandPopup fetch:", error); 
-                  if (formErrorMessage) formErrorMessage.textContent = `Could not load demand details.`;
-                  if (demandPopupBg) demandPopupBg.style.display = 'none';
-                  return;
-              }
-            //}
-        } else {
-            if (demandPopupTitle) demandPopupTitle.innerText = "Add Demand";
-            if (allocationModeSelection) allocationModeSelection.value = 'NA';
-            if (startDateInput) startDateInput.disabled = false;
-            if (timeRequiredInput) timeRequiredInput.disabled = false;
-            togglePredictedEndDateVisibility();
+            if (!response.ok) throw new Error('Failed to fetch demand data.');
+
+            const demandData = await response.json();
+            console.log(demandData.team_id);
+            console.log (isAssignMode);
+            console.log(demandData);
+
+            if (demandForm) demandForm.reset();
+                formErrorMessage.textContent = '';
+                currentDemandId = demandId;
+                preferred_end_date_input.value = '';
+
+            if (isAssignMode) {
+                demandPopupTitle.innerText = "Assign Demand";
+
+                demandNameInput.disabled = true;
+                startDateInput.disabled = true;
+                timeRequiredInput.disabled = true;
+                statusSelect.disabled = true;
+
+                preferred_end_date_input.disabled = false;
+                demandTeamSelect.disabled = false;
+
+                document.getElementById("preferred_end_group").style.display = "block";
+                document.getElementById("assignTeamContainer").style.display = "block";
+            }
+            else {
+                demandNameInput.disabled = false;
+                startDateInput.disabled = true;
+                timeRequiredInput.disabled = true;
+                if (demandData.team_id===undefined || demandData.team_id===null) {
+                    statusSelect.disabled = true;
+                } else {
+                    statusSelect.disabled = false;
+                }
+            }
+
+            demandNameInput.value = demandData.demand_name;
+            startDateInput.value = demandData.start_date;
+            timeRequiredInput.value = demandData.time_needed;
+            preferred_end_date_input.value = demandData.predicted_end_date || '';
+            demandTeamSelect.value = demandData.team_ID ? String(demandData.team_ID) : '';
+            actualEndReadonly.value = demandData.actual_end_date || '';
+            statusSelect.value = demandData.demand_completion_status || 'Pending';
+            assignTeamContainer.style.display = "none";
+
+            savedStartDate = new Date(demandData.start_date);
+            savedStartDate.setHours(0, 0, 0, 0);
+
+            // disable fields only if needed
+            startDateInput.disabled = true;
+            timeRequiredInput.disabled = true;
+
+        } catch (error) {
+            console.error("Error in openDemandPopup fetch:", error);
+            formErrorMessage.textContent = `Could not load demand details.`;
+            demandPopupBg.style.display = 'none';
         }
+    } else {
+        // ADD MODE
+        demandPopupTitle.innerText = "Add Demand";
+        demandTeamSelect.value = "";
+        demandTeamSelect.disabled = false;
+        preferred_end_date_input.value = "";
+        preferred_end_date_input.disabled = false;
 
-        togglePredictedEndDateVisibility();
-        if (demandPopupBg) demandPopupBg.style.display = 'flex';
+        document.getElementById("assignTeamContainer").style.display = "none";
+        document.getElementById("preferred_end_group").style.display = "none";
+
+        startDateInput.disabled = false;
+        timeRequiredInput.disabled = false;
     }
+
+    demandPopupBg.style.display = 'flex';
+}
 
 
 
@@ -424,7 +652,67 @@ async function openDemandPopup(demandId = null) {
       demandForm.reset();
       formErrorMessage.textContent = '';
       currentDemandId = null;
+      confirmedPredictedEnd = false;
+      pendingPredictedEnd = null;
     }
+
+
+async function fetchAvailableTeamsForSqueeze() {
+    if (!confirmedPredictedEnd) return;
+
+    const preferredEnd = preferred_end_date_input.value;
+    const startDate = startDateInput.value;
+    const hours = timeRequiredInput.value;
+
+    if (!preferredEnd || !startDate || !hours) return;
+
+    try {
+        const res = await fetch('/api/get_teams_meeting_deadline/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken,
+            },
+            body: JSON.stringify({
+                predicted_end: preferredEnd,
+                start_date: startDate,
+                time_required: parseFloat(hours)
+            })
+        });
+
+        const data = await res.json();
+
+        const assignTeamContainer = document.getElementById("assignTeamContainer");
+        const label = document.querySelector("label[for='demandTeam']");
+
+        // reset dropdown
+        demandTeamSelect.innerHTML = '<option value="">-- Select Team --</option>';
+        assignTeamContainer.style.display = "block";
+
+        if (!data.deadline_met) {
+            alert(
+                "No teams can meet the selected deadline.\n" +
+                "You may still assign any team, but the deadline may not be met."
+            );
+        }
+
+        label.textContent = "Select Team:";
+
+        if (Array.isArray(data.teams)) {
+            data.teams.forEach(team => {
+                const option = document.createElement('option');
+                option.value = team.team_ID;
+                option.textContent = team.team_name;
+                demandTeamSelect.appendChild(option);
+            });
+        }
+
+    } catch (err) {
+        console.error("Error fetching teams:", err);
+        formErrorMessage.textContent = "Error checking team availability.";
+    }
+}
+
 
 //to delete the demand
     async function deleteDemand(demandId) {
@@ -456,129 +744,55 @@ async function openDemandPopup(demandId = null) {
       }
     }
 
+    function onPredictedEndSelected() {
 
-demandForm.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    formErrorMessage.textContent = '';
+    const date = preferred_end_date_input.value;
+    if (!date) return;
 
-    const MANAGE_DEMAND_BASE_URL = "{% url 'manage_demand_api' 0 %}".replace('0/', '');
-    const url = currentDemandId ? `${MANAGE_DEMAND_BASE_URL}${currentDemandId}/` : MANAGE_DEMAND_BASE_URL;
-    const method = currentDemandId ? 'PUT' : 'POST';
+    pendingPredictedEnd = date;
 
-    const formData = {
-        demand_name: demandNameInput.value,
-        start_date: startDateInput.value,
-        time_needed: parseFloat(timeRequiredInput.value),
-        team_id: demandTeamSelect.value || null,
-        allocation_mode: allocationModeSelection.value,
-        demand_completion_status: statusSelect.value,
-    };
+    document.getElementById("confirmEndDateText").textContent = date;
+    document.getElementById("confirmEndDateBg").style.display = "flex";
+}
 
-    if (allocationModeSelection.value === 'squeeze') {
-        if (!predictedEndInput.value) {
-            formErrorMessage.textContent = 'Predicted End Date is required for Urgent (Squeezed) mode.';
-            return;
-        }
-        formData.predictedEnd = predictedEndInput.value;
-    } else {
-        formData.predictedEnd = null;
+    function cancelPredictedEnd() {
+        pendingPredictedEnd = null;
+        preferred_end_date_input.value = "";
+        document.getElementById("confirmEndDateBg").style.display = "none";
+        
     }
 
-    try {
-        const response = await fetch(url, {
-            method: method,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrftoken,
-            },
-            body: JSON.stringify(formData),
-        });
-
-        const data = await response.json();
-        if (response.ok) {
-            alert(data.message || 'Demand saved successfully!');
-            location.reload();
-        } else {
-            formErrorMessage.textContent = data.error || 'Error saving demand: Unknown error';
-        }
-    } catch (error) {
-        console.error('Fetch error:', error);
-        formErrorMessage.textContent = 'An error occurred while communicating with the server.';
-    }
-    //const response = await fetch(url)
-    //if (response.ok) {
-        closeDemandPopup();
-    //}
-});
-
-    document.addEventListener("DOMContentLoaded", async function () {
-
-        demandPopupBg = document.getElementById('demandPopupBg'); 
-        demandForm = document.getElementById('demandForm');
-        demandPopupTitle = document.getElementById('demandPopupTitle');
-        formErrorMessage = document.getElementById('formErrorMessage');
-
-
-        demandNameInput = document.getElementById('demandName');
-        startDateInput = document.getElementById('startDate');
-        timeRequiredInput = document.getElementById('timeRequired');
-        demandTeamSelect = document.getElementById('demandTeam');
-        predictedEndDateGroup = document.getElementById('predictedEndDateGroup');
-        predictedEndInput = document.getElementById('predictedEndInput');
-        statusSelect = document.getElementById('status');
-        actualEndReadonly = document.getElementById('actualEndReadonly');
-        allocationModeSelection = document.getElementById("allocationModeSelection"); 
-
-    if (allocationModeSelection) {
-      allocationModeSelection.addEventListener("change", togglePredictedEndDateVisibility);
+    async function confirmPredictedEnd() {
+        confirmedPredictedEnd = true;
+        document.getElementById("confirmEndDateBg").style.display = "none";
+        document.getElementById("assignTeamContainer").style.display = "block";
+        console.log("Confirmed predicted end, fetching teams...");
+        await fetchAvailableTeamsForSqueeze();
     }
 
-    if (predictedEndInput) {
-      predictedEndInput.addEventListener('change', async () => {
-        if (allocationModeSelection.value !== 'squeeze' || !predictedEndInput.value) return;
 
-        const url = '/api/get_teams_meeting_deadline/';
-        try {
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrftoken,
-                },
-                body: JSON.stringify({
-                    predicted_end: predictedEndInput.value,
-                    start_date: startDateInput.value,
-                    time_required: parseFloat(timeRequiredInput.value)
-                })
-            });
-            const data = await res.json();
+  function updateAddDemandButton() {
+    const addDemandBtn = document.getElementById("addDemandBtn");
+    const allRows = document.querySelectorAll("#demandTableBody tr[data-demand-id]");
 
-            const label = document.querySelector("label[for='demandTeam']");
-            label.textContent = "Available Teams (choose one):";  
-            
-            demandTeamSelect.innerHTML = '';
-            if (data.length > 0) {
-                data.forEach(team => {
-                    const option = document.createElement('option');
-                    option.value = team.team_id;
-                    option.text = team.team_name;
-                    demandTeamSelect.appendChild(option);
-                });
-            } else {
-                alert('No teams available for selected deadline. Switching to team-first allocation.');
-                allocationModeSelection.value = 'even';
-                togglePredictedEndDateVisibility();
-                const label = document.querySelector("label[for='demandTeam']");
-                label.textContent = "Assign Team:";
-            }
-        } catch (err) {
-            console.error('Error fetching available teams:', err);
-            alert('Server error while checking team availability.');
+    let ongoingDemands = 0;
+    allRows.forEach(row => {
+        const statusTd = row.cells[6]; // 0-based index of completion status
+        if (statusTd && !statusTd.textContent.includes("Finished")) {
+            ongoingDemands++;
         }
     });
 
+    if (ongoingDemands >= 15) {
+        addDemandBtn.disabled = true;
+        addDemandBtn.textContent = "Ongoing demand limit reached (15)";
+    } else {
+        addDemandBtn.disabled = false;
+        addDemandBtn.textContent = "+ Add Demand";
     }
-  });
+}
+
+
   </script>
 
 </body>
