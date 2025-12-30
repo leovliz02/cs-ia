@@ -236,9 +236,6 @@
         cursor: pointer;
         font-size: 1rem;
     }
-    .add-user-section button:hover {
-        background-color: #218838;
-    }
 
     .report-section {
         margin-top: 2rem;
@@ -345,6 +342,7 @@
     <a href="{% url 'manager_approvals_page' %}">Approvals Pending</a>
   </nav>
 
+  <!-- Popup for Teams -->
   <div class="container">
     <div class="top-bar">
       <button id="addNewTeamBtn">+ Add New Team</button>
@@ -443,7 +441,7 @@
     const efficiencyReportTableBody = document.getElementById('efficiencyReportTableBody');
     const reportPopupCloseBtn = document.getElementById('reportPopupCloseBtn');
 
- 
+    //rendering team details into table
     async function fetchTeamDetails(team_id) {
       try {
         const response = await fetch(`/api/manager/teams/${team_id}/`);
@@ -459,6 +457,33 @@
       }
     }
 
+    function renderTeamMembers(members) {
+        currentTeamMembersList.innerHTML = '';
+        if (members.length == 6) {
+            console.log(members.length);
+            addUserToTeamBtn.disabled = true;
+            availableUsersSelect.disabled = true;
+            addUserToTeamBtn.textContent = "Team already has 6 members";
+        } else {
+            addUserToTeamBtn.disabled = false;
+            availableUsersSelect.disabled = false;
+
+            addUserToTeamBtn.textContent = "Add User";
+        }
+        if (members && members.length > 0) {
+            members.forEach(member => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${member.first_name} ${member.last_name}</span>
+                `;
+                currentTeamMembersList.appendChild(li);
+            });
+        } else {
+            currentTeamMembersList.innerHTML = '<li>No members yet.</li>';
+        }
+    }
+
+    // team popup functions and rendering 
     function showPopup(popupElement) {
       popupElement.style.display = 'flex';
     }
@@ -480,32 +505,6 @@
           efficiencyReportTable.style.display = 'none';
           efficiencyReportTableBody.innerHTML = '';
       }
-    }
-
-    function renderTeamMembers(members) {
-        currentTeamMembersList.innerHTML = '';
-        if (members.length >= 6) {
-            addUserToTeamBtn.disabled = true;
-            availableUsersSelect.disabled = true;
-
-            addUserToTeamBtn.textContent = "Team already has 6 members";
-        } else {
-            addUserToTeamBtn.disabled = false;
-            availableUsersSelect.disabled = false;
-
-            addUserToTeamBtn.textContent = "Add User";
-        }
-        if (members && members.length > 0) {
-            members.forEach(member => {
-                const li = document.createElement('li');
-                li.innerHTML = `
-                    <span>${member.first_name} ${member.last_name}</span>
-                `;
-                currentTeamMembersList.appendChild(li);
-            });
-        } else {
-            currentTeamMembersList.innerHTML = '<li>No members yet.</li>';
-        }
     }
 
     function populateAvailableUsers(users) {
@@ -539,7 +538,7 @@
 
     function renderTeams(teams) {
         teamsContainer.innerHTML = ''; 
-        if (teams.length >= 12) {
+        if (teams.length == 12) {
             addNewTeamBtn.disabled = true;
             addNewTeamBtn.textContent = "Team limit reached (12)";
         } else {
@@ -559,7 +558,6 @@
             });
         }
     }
-
 
     async function fetchAvailableUsers() {
         try {
@@ -589,9 +587,11 @@
             renderTeamMembers(team.members);
 
             // Enable add-user section
-            addUserToTeamBtn.disabled = false;
             availableUsersSelect.disabled = false;
-            addUserToTeamBtn.textContent = "Add User";
+            if (team.members.length == 6){
+              addUserToTeamBtn.textContent = "Team already has 6 members";
+            } else {
+              addUserToTeamBtn.textContent = "Add User";}
           }
         } else {
           // Adding new team
@@ -615,6 +615,7 @@
     async function saveTeam() {
       const id = teamIdInput.value;
       const name = teamNameInput.value.trim();
+      const empId = availableUsersSelect.value;
 
       if (!name) {
         alert('Team Name cannot be empty.');
@@ -640,8 +641,9 @@
           const errorData = await response.json();
           throw new Error(`Failed to save team: ${errorData.error || response.statusText}`);
         }
+        if (empId){
+          addUserToTeam()}
 
-        alert('Team saved successfully!');
         hidePopup(teamPopup);
         fetchTeams(); 
       } catch (error) {
@@ -707,15 +709,14 @@
             }
 
             alert('User added to team successfully!');
-            openTeamPopup(team_id); 
+
         } catch (error) {
             console.error('Error adding user to team:', error);
             alert(error.message);
         }
-    }
+    }   
 
-    
-
+    //efficiency report rendering
     async function generateEfficiencyReport() {
         hidePopup(efficiencyReportPopup); 
         showPopup(efficiencyReportPopup); 
@@ -766,23 +767,8 @@
         }
     }
 
-
-document.addEventListener('DOMContentLoaded', () => {
-    fetchTeams();
-
-    addNewTeamBtn.addEventListener('click', () => openTeamPopup(null));
-    cancelPopupBtn.addEventListener('click', () => hidePopup(teamPopup));
-    saveTeamBtn.addEventListener('click', saveTeam);
-    deleteTeamBtn.addEventListener('click', deleteTeam);
-    addUserToTeamBtn.addEventListener('click', addUserToTeam);
-    generateReportBtn.addEventListener('click', generateEfficiencyReport);
-    reportPopupCloseBtn.addEventListener('click', () => hidePopup(efficiencyReportPopup));
-});
-
-
-
     // csrf cookie handling
-        function getCookie(name) {
+    function getCookie(name) {
       let cookieValue = null;
       if (document.cookie && document.cookie !== '') {
         const cookies = document.cookie.split(';');
@@ -796,6 +782,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       return cookieValue;
     }
+
+document.addEventListener('DOMContentLoaded', () => {
+    fetchTeams();
+
+    addNewTeamBtn.addEventListener('click', () => openTeamPopup(null));
+    cancelPopupBtn.addEventListener('click', () => hidePopup(teamPopup));
+    saveTeamBtn.addEventListener('click', saveTeam);
+    deleteTeamBtn.addEventListener('click', deleteTeam);
+    generateReportBtn.addEventListener('click', generateEfficiencyReport);
+    reportPopupCloseBtn.addEventListener('click', () => hidePopup(efficiencyReportPopup));
+});
 
   </script>
 </body>

@@ -287,20 +287,20 @@ class Manager(models.Model):
                 for team_member in demand.team.members.all():
                     if name_changed:
                         Notifications.objects.create(
-                            notification_message=f"Demand name for Demand ID {demand.demandID} is now '{demand.demand_name}'.",
+                            notification_message=f"Demand name for Demand ID {demand.demandID} is now {demand.demand_name}.",
                             employee=team_member
                         )
                     if status_changed:
                         Notifications.objects.create(
-                            notification_message=f"Demand '{demand.demand_name}' is now '{demand.demand_completion_status}'.",
+                            notification_message=f"{demand.demand_name} is now {demand.demand_completion_status}.",
                             employee=team_member
                         )
 
             Notifications.objects.create(
-                notification_message=f"Your request to edit Demand '{req.demand.demand_name}' (ID: {req.demand.demandID}) has been APPROVED.",
+                notification_message=f"Your request to edit {req.demand.demand_name} (ID: {req.demand.demandID}) has been APPROVED.",
                 employee=req.employee
             )
-            print(f"Demand edit request {request_id} approved for {req.employee.user.get_full_name()}.")
+            print(f"Edit request for {req.demand.demand_name} has been approved for {req.employee.user.get_full_name()}.")
             req.status = 'Approved'
         else:
             req.status = 'Rejected'
@@ -308,7 +308,7 @@ class Manager(models.Model):
                 notification_message=f"Your request to edit details of Demand '{req.demand.demand_name}' (ID: {req.demand.demandID}) has been DECLINED.",
                 employee=req.employee
             )
-            print(f"Demand edit request {request_id} declined for {req.employee.user.get_full_name()}.")
+            print(f"Edit request {req.demand.demand_name} has been declined for {req.employee.user.get_full_name()}.")
 
         req.save()
         req.delete()
@@ -507,7 +507,7 @@ class Notifications (models.Model):
 class CapacityChangeRequest (models.Model):
     employee = models.ForeignKey("Employee", on_delete=models.CASCADE, related_name='capacity_change_requests')
     new_capacity = models.FloatField(
-        validators=[MinValueValidator(0.0), MaxValueValidator(15.0)]
+        validators=[MinValueValidator(0.0), MaxValueValidator(8.0)]
     )
     start_date = models.DateField ()
     end_date = models.DateField ()

@@ -8,7 +8,7 @@
   {% load static%}
   <link rel="stylesheet" href="{% static 'styles.css' %}">
 
-  {#formatting for the pie chart #}
+  <!--formatting for the pie chart-->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
@@ -142,27 +142,46 @@
       options: {
         responsive: true,
         plugins: {
-          legend: { position: 'bottom' },
+          legend: {
+            display: false
+          },
           tooltip: {
-                callbacks: {
-                  label: (ctx) => {
-                    let label = ctx.label || '';
-                    if (label) {
-                        label += ': ';
-                    }
-                    if (ctx.parsed !== null) {
-                        label += ctx.parsed.toFixed(2) + ' hrs';
-                    }
-                    return label;
-                  }
-                }
-              }
+            callbacks: {
+              label: (ctx) => `${ctx.label}: ${ctx.parsed.toFixed(2)} hrs`
             }
           }
-        });
+        }
+      }
+    })
 
+    let breakdownHtml = "<ul style='list-style:none; padding-left:0;'>";
 
-    let breakdownHtml = "<ul style='padding-left: 1rem;'>";
+    chartLabels.forEach((label, i) => {
+      const value = chartData[i];
+      const color = chartColors[i];
+
+      if (value < 0.05) return; // hide filler slices
+
+    breakdownHtml += `
+        <li style="display:flex; align-items:center; margin-bottom:8px;">
+          <span style="
+            width:14px;
+            height:14px;
+            background:${color};
+            display:inline-block;
+            border-radius:3px;
+            margin-right:10px;
+          "></span>
+          <span style="flex:1;">${label}</span>
+          <strong>${value.toFixed(2)} hrs</strong>
+        </li>
+      `;
+    });
+
+    breakdownHtml += "</ul>";
+
+    document.getElementById("remainingText").innerHTML = breakdownHtml;
+
     demandAllocations.forEach(allocation => {
       breakdownHtml += `<li>${allocation.label}: ${allocation.time.toFixed(2)} hours</li>`;
     });

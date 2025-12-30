@@ -19,7 +19,7 @@ def get_hours_allocated_for_date_helper(team_obj, target_date):
 
 @transaction.atomic
 def change_employee_capacity_for_range(employee_id, target_start_date, target_end_date, new_capacity_hours):
-    from core.models import Employee, Capacity, CapacityChangeRequest
+    from core.models import Employee, Capacity
     if not isinstance(target_start_date, date) or not isinstance(target_end_date, date):
         raise TypeError("target_start_date and target_end_date must be datetime.date objects.")
     
@@ -63,12 +63,6 @@ def change_employee_capacity_for_range(employee_id, target_start_date, target_en
 
     print(f"Employee '{employee.user.first_name}' (ID: {employee.employee_ID})'s capacity updated for "
           f"{target_start_date} to {target_end_date} to {new_capacity_hours:.2f} hours.")
-
-    if employee.team:
-        for d_date in dates_to_update_team_capacity:
-            employee.team.update_aggregated_capacity(d_date)
-    else:
-        print(f"Note: Employee '{employee.user.first_name()}' is not assigned to a team. Team capacity will not be updated.")
 
 
 def get_teams_meeting_deadline_helper(desired_end_date, proposed_start_date, hours_predicted):

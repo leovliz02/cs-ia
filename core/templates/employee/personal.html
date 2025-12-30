@@ -107,6 +107,7 @@
     <a href="{% url 'employee_commitments' %}">Team Commitments</a>
 </nav>
 
+<!-- personal details table -->
 <div class="container">
   <center><h2>Personal Details</h2></center>
 
@@ -161,6 +162,7 @@
   <center><button class="btn" onclick="openPopup()">Request Capacity Change</button></center>
 </div>
 
+<!-- popup for capacity change request -->
 <div class="popup-bg" id="popupBg">
   <div class="popup">
     <h3>Request Capacity Change</h3>
@@ -181,7 +183,7 @@
   </div>
 </div>
 
-{# NEW NOTIFICATIONS SECTION #}
+<!-- notifications section -->
 <div class="notifications-section">
     <center><h2>Your Notifications</h2></center>
     {% if employee_data.notifications %}
@@ -206,11 +208,14 @@
         <p><center>No notifications to display.</center></p>
     {% endif %}
 </div>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+<!-- script for calendar -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
 <script>
 
   //capacity change popup
-    function openPopup() {
+  function openPopup() {
         document.getElementById("popupBg").style.display = "flex";
     }
 
@@ -223,6 +228,7 @@
 document.addEventListener("DOMContentLoaded", function () {
   const today = new Date();
 
+  //calendar validation implicit 
   minDate = new Date(today);
   minDate.setDate(minDate.getDate() + 7);
 
@@ -317,7 +323,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
     // js for new notification
-
   function markNotificationAsRead(notification_ID) {
       fetch(`/api/notifications/${notification_ID}/mark_read/`, {
           method: 'POST',
@@ -382,6 +387,8 @@ document.addEventListener("DOMContentLoaded", function () {
       });
   }
 
+
+  //csrf cookie handling
   function getCookie(name) {
   let cookieValue = null;
   if (document.cookie && document.cookie !== '') {

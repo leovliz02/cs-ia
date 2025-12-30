@@ -80,7 +80,6 @@ WSGI_APPLICATION = "latestdemand.wsgi.application"
 
 load_dotenv()  
 
-
 DATABASES = {
     "default": dj_database_url.parse(
         os.getenv("POSTGRES_URL"),

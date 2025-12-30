@@ -482,7 +482,7 @@ def manager_add_user_to_team_api(request, team_id):
             return JsonResponse(
                 {
                     'success': False,
-                    'message': f'Team {team.team_name} already has a member.'
+                    'message': f'{team.team_name} already has 6 members.'
                 },
                 status=400
             )
@@ -495,7 +495,6 @@ def manager_add_user_to_team_api(request, team_id):
         
         employee.team = team
         employee.save()
-        #Notifications.objects.create(notification_message=f"You have been added to Team {Team.team_name}.", employee=employee.user)
 
         return JsonResponse({'success': True, 'message': f'User {employee.user.username} added to {team.team_name}.'})
     except Exception as e:
@@ -556,7 +555,7 @@ def manager_demands_page(request):
         default=Value(0),
         output_field=IntegerField()
     )
-).order_by("is_finished", "-start_date")
+).order_by("is_finished", "start_date")
 
     if selected_assignment_status:
         if selected_assignment_status == 'assigned':
@@ -635,6 +634,9 @@ def manage_demand_api(request, demand_id=None):
             print('going to compute end date')
             if team_id: 
                 demand.set_assigned_team(team_id=team_id, hours_predicted=hours, start_date=start_date)
+            elif data.get("start_date") or hours:
+                    demand.start_date = data["start_date"]
+                    demand.time_needed = hours
 
             print('going to save demand')
             demand.save()
@@ -715,14 +717,14 @@ def manager_approvals_page(request):
             approvals_data.append({
                 'id': req.id,
                 'type': 'capacity_change',
-                'description': f"Employee {req.employee.user.first_name} requests capacity change to {req.new_capacity} hours per day on {req.start_date}. ",
+                'description': f"{req.employee.user.first_name} requests capacity change to {req.new_capacity} hours per day on {req.start_date}. ",
                 'request_id': req.id, 
             })
         else: 
             approvals_data.append({
                 'id': req.id,
                 'type': 'capacity_change',
-                'description': f"Employee {req.employee.user.first_name} requests capacity change to {req.new_capacity} hours per day from {req.start_date} to {req.end_date}. ",
+                'description': f"{req.employee.user.first_name} requests capacity change to {req.new_capacity} hours per day from {req.start_date} to {req.end_date}. ",
                 'request_id': req.id, 
             })
 
@@ -730,7 +732,7 @@ def manager_approvals_page(request):
         approvals_data.append({
             'id': req.id,
             'type': 'demand_edit',
-            'description': f"Demand {req.demand.demand_name} with status {req.new_status} to be updated to Demand {req.new_name} with status {req.new_status}.",
+            'description': f"{req.demand.demand_name} with status {req.new_status} to be updated to {req.new_name} with status {req.new_status}.",
             'request_id': req.id,
         })
     

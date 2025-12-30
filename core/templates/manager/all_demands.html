@@ -231,7 +231,7 @@
     <table>
       <thead>
         <tr>
-          <th>Demand ID</th>
+          <th>Demand Name</th>
           <th>Team</th>
           <th>Start Date</th>
           <th>Predicted End</th>
@@ -297,7 +297,7 @@
 
         <div id="preferred_end_group">
           <label for="preferred_end_date_input">Predicted End Date:</label>
-          <input type="date" id="preferred_end_date_input" name="preferred_end" placeholder = "Select Preferred End Date"/>
+          <input type="date" id="preferred_end_date_input" name="preferred_end" readonly placeholder = "Select End Date"/>
         </div>
         <div id="assignTeamContainer" style="display: none;">
           <label for="demandTeam">Assign Team:</label>
@@ -325,6 +325,7 @@
     </div>
   </div>
 
+  <!-- popup to confirm end date -->
   <div class="popup-bg" id="confirmEndDateBg" style="display:none;">
   <div class="popup">
     <h3>Confirm Predicted End Date</h3>
@@ -340,7 +341,11 @@
     </div>
   </div>
 </div>
+
+ <!-- script source for rendering calendar-->
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+  <!-- script source regular page -->
   <script>
     let savedStartDate = null;
     let confirmedPredictedEnd = false;
@@ -348,8 +353,8 @@
     let demandPopupBg, demandForm, demandPopupTitle, formErrorMessage, demand;
     let demandNameInput, startDateInput, timeRequiredInput, demandTeamSelect;
     let preferred_end, preferred_end_date_input, statusSelect, actualEndReadonly;
-
-    let currentDemandId = null; // keeps track of which demand is being edited/assigned
+    let startDatePicker;
+    let currentDemandId = null; 
 
     // cookie management for crsf token
     function getCookie(name) {
@@ -368,9 +373,6 @@
     }
     const csrftoken = getCookie('csrftoken');
 
-    
-
-
     document.addEventListener("DOMContentLoaded", function () {
     // grab all elements
       demandPopupBg = document.getElementById('demandPopupBg'); 
@@ -388,17 +390,17 @@
       preferred_end_date_input.addEventListener("change", onPredictedEndSelected);
 
       //calendar implicit validation
-
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const minStartDate = new Date(today);
       minStartDate.setDate(minStartDate.getDate() + 1);
 
-      flatpickr("#startDate", {
+      
+
+      startDatePicker = flatpickr("#startDate", {
         dateFormat: "Y-m-d",
         minDate: minStartDate,
-
         onChange: function (selectedDates) {
           if (selectedDates.length === 1) {
             savedStartDate = selectedDates[0];
@@ -406,6 +408,7 @@
           }
         }
       });
+
 
       flatpickr("#preferred_end_date_input", {
         dateFormat: "Y-m-d",
@@ -436,13 +439,12 @@
         }
       });
 
-
-
-
+      //demand popup details 
       const addDemandBtn = document.getElementById("addDemandBtn");
       if (addDemandBtn) addDemandBtn.addEventListener("click", () => openDemandPopup());
       updateAddDemandButton();
 
+      // submitting demand form data
       if (demandForm) {
         demandForm.addEventListener('submit', async function (e) {
             e.preventDefault();
@@ -477,7 +479,7 @@
                 const endDate = new Date(preferredEnd);
                 endDate.setHours(0, 0, 0, 0);
 
-                const minEndDate = new Date(document.getElementById('startDate'));
+                const minEndDate = new Date(startDateInput.value);
                 minEndDate.setDate(minEndDate.getDate() + 1);
 
                 if (endDate < minEndDate) {
@@ -540,24 +542,28 @@
       
     }})
 
-    function clearFilters() {
-        window.location.href = window.location.pathname;
-    }
-
     const MANAGE_DEMAND_BASE_URL = "{% url 'manage_demand_api' 0 %}".replace('0/', '');
     const url = currentDemandId ? `${MANAGE_DEMAND_BASE_URL}${currentDemandId}/` : MANAGE_DEMAND_BASE_URL;
     const method = currentDemandId ? 'PUT' : 'POST';
 
+    //filters for searching for demands
+    function clearFilters() {
+        window.location.href = window.location.pathname;
+    }
 
-
-//edit/asisgn demand view
+//edit/asisgn demand view and rendering data for it
 async function openDemandPopup(demandId = null, isAssignMode = false) {
 
     confirmedPredictedEnd = false;
     pendingPredictedEnd = null;
+    statusSelect.disabled=true;
+    preferred_end_date_input.innerText="N/A";
+    preferred_end_date_input.disabled=true;
+    preferred_end_date_input.innerText="N/A";
 
     if (demandId) {
         demandPopupTitle.innerText = "Edit Demand";
+        statusSelect.disabled=false;
 
         try {
             const MANAGE_DEMAND_BASE_URL = "{% url 'manage_demand_api' 0 %}".replace('0/', '');
@@ -572,9 +578,7 @@ async function openDemandPopup(demandId = null, isAssignMode = false) {
             if (!response.ok) throw new Error('Failed to fetch demand data.');
 
             const demandData = await response.json();
-            console.log(demandData.team_id);
-            console.log (isAssignMode);
-            console.log(demandData);
+            
 
             if (demandForm) demandForm.reset();
                 formErrorMessage.textContent = '';
@@ -587,7 +591,7 @@ async function openDemandPopup(demandId = null, isAssignMode = false) {
                 demandNameInput.disabled = true;
                 startDateInput.disabled = true;
                 timeRequiredInput.disabled = true;
-                statusSelect.disabled = true;
+                statusSelect.disabled=true;
 
                 preferred_end_date_input.disabled = false;
                 demandTeamSelect.disabled = false;
@@ -601,13 +605,19 @@ async function openDemandPopup(demandId = null, isAssignMode = false) {
                 timeRequiredInput.disabled = true;
                 if (demandData.team_id===undefined || demandData.team_id===null) {
                     statusSelect.disabled = true;
+                    startDateInput.disabled = false;
+                    timeRequiredInput.disabled = false;
                 } else {
                     statusSelect.disabled = false;
+                    startDateInput.disabled = true;
+                    timeRequiredInput.disabled = true;
                 }
             }
 
             demandNameInput.value = demandData.demand_name;
-            startDateInput.value = demandData.start_date;
+            startDatePicker.setDate(demandData.start_date, true);
+            savedStartDate = new Date(demandData.start_date);
+            savedStartDate.setHours(0, 0, 0, 0);
             timeRequiredInput.value = demandData.time_needed;
             preferred_end_date_input.value = demandData.predicted_end_date || '';
             demandTeamSelect.value = demandData.team_ID ? String(demandData.team_ID) : '';
@@ -617,10 +627,6 @@ async function openDemandPopup(demandId = null, isAssignMode = false) {
 
             savedStartDate = new Date(demandData.start_date);
             savedStartDate.setHours(0, 0, 0, 0);
-
-            // disable fields only if needed
-            startDateInput.disabled = true;
-            timeRequiredInput.disabled = true;
 
         } catch (error) {
             console.error("Error in openDemandPopup fetch:", error);
@@ -645,9 +651,7 @@ async function openDemandPopup(demandId = null, isAssignMode = false) {
     demandPopupBg.style.display = 'flex';
 }
 
-
-
-    function closeDemandPopup() {
+function closeDemandPopup() {
       demandPopupBg.style.display = 'none';
       demandForm.reset();
       formErrorMessage.textContent = '';
@@ -655,7 +659,6 @@ async function openDemandPopup(demandId = null, isAssignMode = false) {
       confirmedPredictedEnd = false;
       pendingPredictedEnd = null;
     }
-
 
 async function fetchAvailableTeamsForSqueeze() {
     if (!confirmedPredictedEnd) return;
@@ -714,37 +717,7 @@ async function fetchAvailableTeamsForSqueeze() {
 }
 
 
-//to delete the demand
-    async function deleteDemand(demandId) {
-      if (!confirm("Are you sure you want to delete this demand?")) {
-        return;
-      }
-
-      try {
-        const DELETE_DEMAND_BASE_URL = "{% url 'delete_demand_api' 0 %}".replace('0/', '');
-        const response = await fetch(`${DELETE_DEMAND_BASE_URL}${demandId}/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrftoken,
-          },
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-          alert(data.message || 'Demand deleted successfully!');
-          location.reload(); 
-        } else {
-          alert('Error deleting demand: ' + (data.error || 'Unknown error'));
-        }
-      } catch (error) {
-        console.error('Fetch error:', error);
-        alert('An error occurred while communicating with the server.');
-      }
-    }
-
-    function onPredictedEndSelected() {
+function onPredictedEndSelected() {
 
     const date = preferred_end_date_input.value;
     if (!date) return;
@@ -755,14 +728,14 @@ async function fetchAvailableTeamsForSqueeze() {
     document.getElementById("confirmEndDateBg").style.display = "flex";
 }
 
-    function cancelPredictedEnd() {
+function cancelPredictedEnd() {
         pendingPredictedEnd = null;
         preferred_end_date_input.value = "";
         document.getElementById("confirmEndDateBg").style.display = "none";
         
     }
 
-    async function confirmPredictedEnd() {
+async function confirmPredictedEnd() {
         confirmedPredictedEnd = true;
         document.getElementById("confirmEndDateBg").style.display = "none";
         document.getElementById("assignTeamContainer").style.display = "block";
@@ -791,6 +764,36 @@ async function fetchAvailableTeamsForSqueeze() {
         addDemandBtn.textContent = "+ Add Demand";
     }
 }
+
+//to delete the demand
+async function deleteDemand(demandId) {
+      if (!confirm("Are you sure you want to delete this demand?")) {
+        return;
+      }
+
+      try {
+        const DELETE_DEMAND_BASE_URL = "{% url 'delete_demand_api' 0 %}".replace('0/', '');
+        const response = await fetch(`${DELETE_DEMAND_BASE_URL}${demandId}/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken,
+          },
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          alert(data.message || 'Demand deleted successfully!');
+          location.reload(); 
+        } else {
+          alert('Error deleting demand: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Fetch error:', error);
+        alert('An error occurred while communicating with the server.');
+      }
+    }
 
 
   </script>
